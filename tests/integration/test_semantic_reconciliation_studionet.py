@@ -99,7 +99,7 @@ def _record(kind, record_id, order_id, quantity=10, unit="each", description="Po
 def _submit(contract, method_name, arguments, account, should_succeed=True):
     receipt = getattr(contract, method_name)(args=arguments).transact(
         wait_transaction_status=TransactionStatus.FINALIZED,
-        wait_interval=3000,
+        wait_interval=20000,
         wait_retries=100,
     )
     assert receipt.get("status_name") == "FINALIZED", (method_name, receipt.get("status_name"), receipt.get("tx_id"))
