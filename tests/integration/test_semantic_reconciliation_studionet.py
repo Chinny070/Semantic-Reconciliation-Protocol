@@ -1,6 +1,7 @@
 """Canonical Studionet consensus scenarios; writes permanent testnet evidence."""
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 
@@ -123,7 +124,14 @@ def _receipt_for_order(contract, order_id):
     # Receipt IDs are monotonic and bounded to 64 for this deployment.
     matches = []
     for number in range(1, 65):
-        raw = contract.get_reconciliation_certificate(args=["R" + str(number)]).call()
+        for attempt in range(3):
+            try:
+                raw = contract.get_reconciliation_certificate(args=["R" + str(number)]).call()
+                break
+            except Exception as exc:
+                if "Rate limit exceeded" not in str(exc) or attempt == 2:
+                    raise
+                time.sleep(65)
         if not raw:
             # Receipt IDs are allocated monotonically, so the first empty slot
             # ends the bounded scan and avoids unnecessary RPC requests.
