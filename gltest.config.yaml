@@ -1,0 +1,5 @@
+networks:
+  default: studionet
+  studionet:
+    id: 61999
+    url: https://studio.genlayer.com/api

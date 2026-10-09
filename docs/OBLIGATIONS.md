@@ -1,0 +1,5 @@
+# Commercial Obligation Graph
+
+Orders carry a bounded graph of typed non-line-item requirements such as delivery location, certificates, serial lists, freight limits, surcharge policy, inspection, deadlines, and service milestones. Semantic findings are bounded to the frozen obligation IDs and return only PASS, FAIL, AMBIGUOUS, or INSUFFICIENT_EVIDENCE. Unknown IDs/results and missing findings fail closed.
+
+The deterministic deadline field is a Unix timestamp frozen on each order line. Delivery registration receives the transaction timestamp supplied by GenVM's deterministic transaction clock; a registration after the deadline cannot consume quantity. This is a conservative on-chain registration deadline, not a claim that the physical handoff occurred at that instant. Invoice charge classes must exactly match the order line's frozen charge class. Other threshold-specific obligation types remain semantic or unsupported until they have a typed deterministic definition and evidence rule; free-form prose is never treated as an arithmetic threshold.
