@@ -104,8 +104,14 @@ def _submit(contract, method_name, arguments, account, should_succeed=True):
     )
     assert receipt.get("status_name") == "FINALIZED", (method_name, receipt.get("status_name"), receipt.get("tx_id"))
     if should_succeed:
+        assert receipt.get("result_name") == "MAJORITY_AGREE", (
+            method_name, receipt.get("result_name"), receipt.get("tx_id")
+        )
         assert tx_execution_succeeded(receipt), (method_name, receipt.get("result_name"), receipt.get("tx_id"))
     else:
+        assert receipt.get("result_name") == "MAJORITY_DISAGREE", (
+            method_name, receipt.get("result_name"), receipt.get("tx_id")
+        )
         assert tx_execution_failed(receipt), (method_name, receipt.get("result_name"), receipt.get("tx_id"))
     return receipt
 
