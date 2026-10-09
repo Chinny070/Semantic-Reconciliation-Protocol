@@ -121,14 +121,17 @@ def _publish(contract, account, order, delivery, invoice):
 
 def _receipt_for_order(contract, order_id):
     # Receipt IDs are monotonic and bounded to 64 for this deployment.
+    matches = []
     for number in range(1, 65):
         raw = contract.get_reconciliation_certificate(args=["R" + str(number)]).call()
         if not raw:
             continue
         certificate = json.loads(raw)
         if certificate.get("order_id") == order_id:
-            return certificate
-    raise AssertionError("no stored reconciliation certificate found for " + order_id)
+            matches.append(certificate)
+    if not matches:
+        raise AssertionError("no stored reconciliation certificate found for " + order_id)
+    return matches[-1]
 
 
 def _record_scenario(name, transactions, result):
@@ -277,4 +280,3 @@ def test_live_external_route_failure_is_fail_closed(live_contract):
     assert after == before
     _record_scenario("negative_external_failure_fail_closed", txs, {"remaining_before": before, "remaining_after": after,
                                                                     "tx_execution_result_name": failed.get("tx_execution_result_name")})
-
