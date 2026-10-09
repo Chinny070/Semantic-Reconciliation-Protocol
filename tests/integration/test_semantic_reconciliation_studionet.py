@@ -239,17 +239,21 @@ def test_live_disguised_duplicate_invoice_blocked(live_contract):
     contract, account = live_contract
     order_id = _id("LIVE-DUP")
     order = _order(order_id, account.address, quantity=20, description="Portland cement grade 42.5")
-    delivery1 = _record("delivery", _id("DEL"), order_id, quantity=10, description="Portland cement 42.5")
+    delivery1 = _record("delivery", _id("DEL"), order_id, quantity=10, description="Portland cement 42.5",
+                        evidence_kind="WEB_RENDERED", evidence_source=DELIVERY_FIXTURE_URL)
     invoice1 = _record("invoice", _id("INV"), order_id, quantity=10,
-                       description="Portland cement grade 42.5", price=90)
+                       description="Portland cement grade 42.5", price=90,
+                       evidence_kind="WEB_RENDERED", evidence_source=INVOICE_FIXTURE_URL)
     txs = _publish(contract, account, order, delivery1, invoice1)
     txs.append(_submit(contract, "reconcile", [delivery1["record_id"], invoice1["record_id"]], account))
     first = _receipt_for_order(contract, order_id)
     assert first["consumed"][0]["quantity"] == 10, first
     delivery2 = _record("delivery", _id("DEL"), order_id, quantity=10,
-                        description="OPC Type I cement, 42.5 strength")
+                        description="OPC Type I cement, 42.5 strength",
+                        evidence_kind="WEB_RENDERED", evidence_source=DELIVERY_FIXTURE_URL)
     invoice2 = _record("invoice", _id("INV"), order_id, quantity=10,
-                       description="Type I Portland cement 42.5", price=90)
+                       description="Type I Portland cement 42.5", price=90,
+                       evidence_kind="WEB_RENDERED", evidence_source=INVOICE_FIXTURE_URL)
     txs.extend([
         _submit(contract, "register_delivery", [json.dumps(delivery2, separators=(",", ":"))], account),
         _submit(contract, "register_invoice", [json.dumps(invoice2, separators=(",", ":"))], account),
