@@ -27,4 +27,19 @@ The full seven-case suite produced six passing scenario functions on this deploy
 
 ## Latest deployment
 
-The latest address is `0xFdDaDD2732f78fFD0aCECd27c2c56704171437f0`, deployed by `0xbe1a4c599aae5c80b6d04aecba3786baa03d527fae97576c3bb468dc7ae6a647`. Its deployment receipt and schema are verified, but its live scenario suite has not completed. The packaging retry failed before submission because `https://studio.genlayer.com/api` timed out. Do not promote prior-address scenarios to latest-address evidence.
+Current canonical address `0xAa78272Caf6EAf7e523E78768319fBc2a65eF795` was deployed by `0x024a2bf6243324b76de4b7a1234a2a428402341f19ac625c9c28d6c6614b0821` from source commit `26b55af617c2a2844b44001fa49c4ea485596238`. Deployment finalized with `MAJORITY_AGREE` and schema contains 12 methods. Retrieved deployed source matches the committed local contract exactly after line-ending normalization; both SHA-256 values are `da277dea8a0db7f7cd94f5d6c592835ef06095aff7673de9ff2563ff0114f3ff`.
+
+### Current-address integration run
+
+Four scenarios passed with finalized `MAJORITY_AGREE` transactions and independently read certificates:
+
+| Scenario | Certificate | Consumed quantity | Transaction hashes |
+|---|---|---:|---|
+| Rendered-evidence semantic match | `R3 MATCHED` | 10 | `0x2e20e82a96d9f4147d4353a8427ef23d3c78a44f531bb052a53bba7af8f1cf9d`; `0x5fd9cc2e50b6d286efdb4d07c213d3980ea378e8b7f22b5178d53ff8c9aba8ae`; `0xd5d153ab6c58571243b5233a10e41ebb3f6709b011f042b06280d0bb9ff07d88`; `0x5a5c2c13bbdb9c35cd9681672e2ccdfc0da5883f9f86ac1a1f91d96aa5986804` |
+| Packaging/unit equivalence | `R4 MATCHED`, `PACKAGING_EQUIVALENT` | 24 | `0xa606fa8c4d6fb0a86018418985149f47fbfc7f27939db4c44dca11d916489817`; `0x0401cf1504c978f2ac13a81df5b963583d920edf713525180f99e7e7c61a08a7`; `0x8182a01fa5a41589b5d26e610fd91ac13cf1f9c26bf4d9850a107c2e2949d77a`; `0x6c78a0c6f4982161fa49c6d48837045dac980ad7bfc0865db8254d4981277bb0` |
+| Partial fulfillment | `R5 PARTIAL_MATCH` | 4 | `0x762161e3d9897807c6b07321896c18d75b7830447d7bc046b0c07f0fbce6f955`; `0x371ec127aaab2dd6e2a3bebe7b557052feb50babd928fa0e41af40f9e9009852`; `0x1cfebbce611969cccf5f85031f61357ab4a57c3b6984284229414f98596e7202`; `0xef3859117767a2ed4285579b1e8219bb51a6a5ee5d869e31dc541f0be80f753d` |
+| Permitted equivalent substitution | `R6 MATCHED`, `ALLOWED_EQUIVALENT` | 10 | `0xe940e2a712bea1322dbcfaac771971c07d9c4809147ace8f58e5c94f6b994298`; `0x422a3ce220c98f59db0d01fb387e5c053d00a18e0264edfc13a0e4b651ff3c43`; `0x340f272b3fbd2cd84488b2074fc8db688021d733740b0b3b6a2426975757f721`; `0x5d90055a11c8eb89efd9d5776a0c5f06fec1688424d20c9c5a7252c04578a590` |
+
+Unauthorized substitution transaction `0x074dff0f3347ac148be92f7665672439a7a34961365bcc2b8576a43a9aaf2a2c` finalized `MAJORITY_DISAGREE` (three disagree votes, two idle). The stored output is fail-closed: zero consumed, `INCONCLUSIVE`, exception `UNAUTHORIZED_SUBSTITUTION`. Its edge is `ALLOWED_EQUIVALENT` / `ALLOWED_SUPERIOR` under `EXACT_REQUIRED`, so no ledger mutation occurred. This is recorded as a disagreement, not a consensus pass.
+
+An isolated current-address duplicate run was verified earlier: seven finalized `MAJORITY_AGREE` transactions; `DUPLICATE_BILLING_ATTEMPT`, zero consumed, duplicate count 1, possible duplicate semantic class. In the full run the duplicate scenario later timed out during receipt polling, so that run is incomplete. The external-route failure test could not retrieve the contract schema after Studionet RPC became unavailable and did not start. A separate `genlayer trace` attempt returned RPC `Method not found` for `gen_dbg_traceTransaction`; the regular receipt was retrievable. Do not describe the complete seven-scenario suite as passing.

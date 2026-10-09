@@ -1,6 +1,6 @@
 # Implementation gap audit
 
-Audit target: the workspace build as found before this remediation pass, compared with `SEMANTIC_RECONCILIATION_PROTOCOL_CODEX_MASTER_PROMPT.md` and the user-supplied feature checklist. This report records implementation substance, not file or method presence.
+Audit target: the initial workspace build before remediation, compared with `SEMANTIC_RECONCILIATION_PROTOCOL_CODEX_MASTER_PROMPT.md` and the user-supplied feature checklist. The table below is a historical baseline and must not be read as describing the current `26b55af` candidate. See the current-state re-audit below for what remains open.
 
 | Requirement | Finding | Evidence and gap |
 |---|---|---|
@@ -23,6 +23,12 @@ Audit target: the workspace build as found before this remediation pass, compare
 | External failure separation | PARTIAL | Exceptions fail closed by reverting; failures are not classified or exposed as a separate typed external-evidence outcome. |
 | Prompt-injection resistance | PARTIAL | Prompt says evidence is untrusted, but no adversarial injection tests or extraction firewall prove records cannot override instructions. |
 | Source/evidence identity | INCORRECT | Invoice number is derived from `record_id`; identity has no explicit issuer/reference fields, and normalized hashing can collapse records without validating their source lineage. |
+
+## Current candidate residual audit (`26b55af`)
+
+Verified improvements since the baseline include frozen order-defined rational unit conversions; partial quantity accounting for source lines; duplicate invoice identity and consumption checks; successor links for delivery/invoice corrections; versioned certificates with matched/remaining quantity and evidence digests; actual WEB_RENDERED retrieval and independent validator observations; and direct adversarial tests. Current live Studionet results are recorded in `LIVE_EVIDENCE.md`.
+
+Still material: commercial obligation definitions remain predominantly prose with model-returned PASS/FAIL rather than typed deterministic threshold checks; order amendments and reversal/reissue of consumed quantities are not implemented; safe grouped/many-to-one source allocation is not implemented; unauthorized-substitution validator agreement failed to reach consensus on the latest deployed source; the full duplicate and external-route negative gates did not complete on the latest run due RPC availability; public Explorer verification remains outstanding. The candidate therefore remains not frozen.
 | Downstream-friendly machine-readable views | PARTIAL | Certificate and remaining-quantity views exist, but there are no stable typed per-dimension/status views and certificate fields are incomplete. |
 | No model-controlled settlement state | PARTIAL | Proposal schema excludes amounts and state. Deterministic logic still trusts caller-provided conversion ratios and permits cross-field semantic contradictions to affect consumption. |
 | Scope discipline | COMPLETE | No frontend, ERP dashboard, payment, escrow, or marketplace layer was found. |
