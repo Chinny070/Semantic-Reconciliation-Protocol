@@ -443,6 +443,7 @@ class SemanticReconciliation(gl.Contract):
     challenges: gl.storage.TreeMap[str, str]
     challenge_evidence_used: gl.storage.TreeMap[str, bool]
     counters: gl.storage.TreeMap[str, str]
+    latest_receipt_by_order: gl.storage.TreeMap[str, str]
 
     def __init__(self):
         pass
@@ -747,6 +748,7 @@ class SemanticReconciliation(gl.Contract):
         certificate["certificate_hash"] = _digest(_canonical(certificate))
         self.consumption[order["order_id"]] = _canonical(current)
         self.receipts[reconciliation_id] = _canonical(certificate)
+        self.latest_receipt_by_order[order["order_id"]] = reconciliation_id
         self._increment("receipts")
         self.used_record_pairs[pair_key] = True
         return _canonical(certificate)
@@ -835,6 +837,13 @@ class SemanticReconciliation(gl.Contract):
 
     @gl.public.view
     def get_reconciliation_certificate(self, reconciliation_id: str) -> str:
+        return self.receipts.get(reconciliation_id, "")
+
+    @gl.public.view
+    def get_latest_reconciliation_for_order(self, order_id: str) -> str:
+        reconciliation_id = self.latest_receipt_by_order.get(order_id, "")
+        if not reconciliation_id:
+            return ""
         return self.receipts.get(reconciliation_id, "")
 
     @gl.public.view

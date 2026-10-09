@@ -1,7 +1,6 @@
 """Canonical Studionet consensus scenarios; writes permanent testnet evidence."""
 import json
 import os
-import time
 import uuid
 from pathlib import Path
 
@@ -121,27 +120,10 @@ def _publish(contract, account, order, delivery, invoice):
 
 
 def _receipt_for_order(contract, order_id):
-    # Receipt IDs are monotonic and bounded to 64 for this deployment.
-    matches = []
-    for number in range(1, 65):
-        for attempt in range(3):
-            try:
-                raw = contract.get_reconciliation_certificate(args=["R" + str(number)]).call()
-                break
-            except Exception as exc:
-                if "Rate limit exceeded" not in str(exc) or attempt == 2:
-                    raise
-                time.sleep(65)
-        if not raw:
-            # Receipt IDs are allocated monotonically, so the first empty slot
-            # ends the bounded scan and avoids unnecessary RPC requests.
-            break
-        certificate = json.loads(raw)
-        if certificate.get("order_id") == order_id:
-            matches.append(certificate)
-    if not matches:
+    raw = contract.get_latest_reconciliation_for_order(args=[order_id]).call()
+    if not raw:
         raise AssertionError("no stored reconciliation certificate found for " + order_id)
-    return matches[-1]
+    return json.loads(raw)
 
 
 def _record_scenario(name, transactions, result):

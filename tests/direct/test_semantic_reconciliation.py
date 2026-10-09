@@ -17,6 +17,7 @@ def test_semantic_synonym_and_certificate(system):
     mock_matching(vm, proposal())
     cert = json.loads(c.reconcile("D-1", "I-1"))
     assert cert["reconciliation_status"] == "MATCHED"
+    assert json.loads(c.get_latest_reconciliation_for_order("PO-1"))["reconciliation_id"] == cert["reconciliation_id"]
     assert cert["consumed"][0]["quantity"] == 10
     assert c.is_reconciliation_clear(cert["reconciliation_id"])
     assert cert["matched_delivery_quantity_digest"]
