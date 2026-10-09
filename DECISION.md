@@ -23,7 +23,7 @@ No owner repositories were locally supplied or reachable for a complete portfoli
 | ERP three-way match | Centralized application decision | Validator consensus on semantic edges, with on-chain deterministic consumption. |
 | Attestation / oracle | Assertion about one external fact | Multi-record relationship graph plus immutable line-level consumption certificate. |
 
-This remains a collision hypothesis, not a completed ecosystem-wide novelty search; network access was unavailable.
+This remains a collision hypothesis, not a completed ecosystem-wide novelty search. GitHub and official GenLayer documentation were reachable later in the build, but no exhaustive ecosystem, patent, or owner-portfolio search is claimed.
 
 ## GenLayer fit
 
@@ -39,7 +39,7 @@ The same contract interface and certificate can serve all three without a fronte
 
 ## Hardest risk and evidence strategy
 
-The hardest risk is substantive validator equivalence under changing external evidence and model variance. Each run retrieves each registered web record once per node, derives typed findings, and compares all decision-critical fields. Missing or ambiguous evidence fails closed. Public static fixtures provide repeatable live evidence; real-world records are not claimed.
+The hardest risk is substantive validator equivalence under changing external evidence and model variance. Each run retrieves each registered web record once per node, derives typed findings, and compares all decision-critical fields. Missing or ambiguous evidence fails closed. Public fixtures provide repeatable live evidence; real-world records are not claimed. Live packaging classification varied across attempts and the latest prompt clarification was not verified on the latest deployment because the Studionet RPC became unavailable.
 
 ## Standalone Intelligent Contract rationale
 

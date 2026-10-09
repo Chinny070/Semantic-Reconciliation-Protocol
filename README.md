@@ -19,7 +19,7 @@ portable reconciliation certificate
 ## What is implemented
 
 - **Semantic Line-Item Graph:** bounded order/delivery/invoice edges with typed relation and substitution classes.
-- **Commercial Obligation Graph:** frozen semantic obligations whose findings are checked after consensus.
+- **Commercial Obligation Graph:** bounded obligation IDs and semantic findings are included in certificates. Deterministic typed enforcement for every numeric obligation subtype is incomplete; see the release audit.
 - **Quantity–Semantics Separation:** bounded unit conversions are frozen in the order; record submitters cannot supply ratios, and multiplication/divisibility/consumption happen in deterministic code.
 - **Substitution Policy Engine:** policy is frozen in the order and constrains the accepted semantic substitution class.
 - **Partial fulfillment:** consumption records remaining order capacity across receipts.
@@ -42,6 +42,10 @@ python scripts/preflight.py
 ```
 
 Direct Mode mocks only nondeterminism; it is not proof of real validator consensus. Integration testing on Studionet is separate and requires network access. Current deployment and live evidence are recorded in `docs/RELEASE_CANDIDATE_VERIFICATION.md` only after they are observed.
+
+## Release status
+
+The latest source is deployed to Studionet, but the candidate is **not frozen or submission-ready**. The latest deployment still needs its complete live scenario suite, deployed-source parity, Explorer verification, and closure of the typed-obligation and amendment/reversal gaps. See [deployment](docs/DEPLOYMENT.md) and [cold rejection audit](docs/STEWARD_REJECTION_AUDIT.md).
 
 ## Reusable consumers
 

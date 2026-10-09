@@ -206,11 +206,11 @@ def test_live_allowed_equivalent_substitution(live_contract):
     contract, account = live_contract
     order_id = _id("LIVE-SUB-OK")
     order = _order(order_id, account.address, quantity=10, policy="EQUIVALENT_ALLOWED",
-                   description="Nitrile examination gloves, extra large, powder free")
+                   description="Acme nitrile examination gloves, XL, powder free, 4 mil")
     delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
-                       description="Industrial nitrile gloves XL, powder-free")
+                       description="BlueShield nitrile examination gloves, extra large, 4-mil, powder free")
     invoice = _record("invoice", _id("INV"), order_id, quantity=10,
-                      description="Nitrile gloves XL powder-free", price=90)
+                      description="BlueShield-brand nitrile exam gloves XL 4 mil powder-free", price=90)
     txs = _publish(contract, account, order, delivery, invoice)
     txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
     cert = _receipt_for_order(contract, order_id)
