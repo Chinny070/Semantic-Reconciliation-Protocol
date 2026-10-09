@@ -24,9 +24,13 @@ POLICIES = (
     "NO_SUBSTITUTION",
 )
 OBLIGATION_TYPES = (
-    "DELIVERY_DEADLINE", "DELIVERY_LOCATION", "REQUIRED_CERTIFICATE", "SERIAL_NUMBER_LIST",
-    "MAX_FREIGHT_CHARGE", "NO_EXTRA_SURCHARGE", "INSPECTION_REQUIRED", "SERVICE_MILESTONE",
+    "DELIVERY_DEADLINE", "MAX_UNIT_PRICE", "MAX_FREIGHT_CHARGE", "NO_EXTRA_SURCHARGE",
+    "DELIVERY_LOCATION", "REQUIRED_CERTIFICATE", "SERIAL_NUMBER_LIST", "INSPECTION_REQUIRED",
+    "SERVICE_MILESTONE",
 )
+DETERMINISTIC_OBLIGATIONS = {
+    "DELIVERY_DEADLINE", "MAX_UNIT_PRICE", "MAX_FREIGHT_CHARGE", "NO_EXTRA_SURCHARGE",
+}
 
 
 def _bounded_text(value, field, limit=512):
@@ -121,7 +125,7 @@ def validate_order(raw):
     obligation_ids = set()
     for item in obligations:
         if not isinstance(item, dict) or set(item) != {
-            "obligation_id", "type", "definition", "evaluation_mode", "criticality",
+            "obligation_id", "type", "definition", "evaluation_mode", "criticality", "parameters",
         }:
             raise ValueError("invalid obligation fields")
         oid = _bounded_text(item["obligation_id"], "obligation_id", 96)
@@ -133,8 +137,43 @@ def validate_order(raw):
         _bounded_text(item["definition"], "obligation definition")
         if item["evaluation_mode"] not in ("SEMANTIC", "DETERMINISTIC"):
             raise ValueError("invalid obligation evaluation mode")
+        if not isinstance(item["parameters"], dict):
+            raise ValueError("obligation parameters must be an object")
+        if item["type"] in DETERMINISTIC_OBLIGATIONS and item["evaluation_mode"] != "DETERMINISTIC":
+            raise ValueError("numeric obligation requires deterministic evaluation")
+        if item["type"] not in DETERMINISTIC_OBLIGATIONS and item["evaluation_mode"] != "SEMANTIC":
+            raise ValueError("semantic obligation requires semantic evaluation")
+        params = item["parameters"]
+        if item["type"] == "DELIVERY_DEADLINE":
+            if set(params) != {"deadline_timestamp"}:
+                raise ValueError("invalid delivery deadline parameters")
+            _integer(params["deadline_timestamp"], "obligation deadline")
+        elif item["type"] == "MAX_UNIT_PRICE":
+            if set(params) != {"order_line_id", "maximum_unit_price_minor"}:
+                raise ValueError("invalid maximum unit price parameters")
+            _bounded_text(params["order_line_id"], "obligation order line id", 96)
+            _integer(params["maximum_unit_price_minor"], "obligation maximum unit price")
+        elif item["type"] == "MAX_FREIGHT_CHARGE":
+            if set(params) != {"maximum_amount_minor"}:
+                raise ValueError("invalid maximum freight parameters")
+            _integer(params["maximum_amount_minor"], "maximum freight amount")
+        elif item["type"] == "NO_EXTRA_SURCHARGE":
+            if set(params) != {"permitted_charge_classes"}:
+                raise ValueError("invalid surcharge parameters")
+            classes = params["permitted_charge_classes"]
+            if not isinstance(classes, list) or len(classes) > 12:
+                raise ValueError("invalid permitted charge classes")
+            for charge_class in classes:
+                _bounded_text(charge_class, "permitted charge class", 64)
+        elif params:
+            raise ValueError("semantic obligations do not accept deterministic parameters")
         if item["criticality"] not in ("CRITICAL", "STANDARD"):
             raise ValueError("invalid obligation criticality")
+    for item in obligations:
+        if item["type"] == "MAX_UNIT_PRICE":
+            line = next((line for line in lines if line["line_id"] == item["parameters"]["order_line_id"]), None)
+            if line is None or item["parameters"]["maximum_unit_price_minor"] > line["max_unit_price_minor"]:
+                raise ValueError("maximum unit price obligation must tighten an existing line ceiling")
     return order
 
 
@@ -204,6 +243,12 @@ def validate_proposal(proposal, order, delivery, invoice):
             raise ValueError("unknown line id")
         if edge["relation"] not in RELATIONS or edge["substitution"] not in SUBSTITUTIONS:
             raise ValueError("unknown semantic enum")
+        if (edge["relation"] == "UNAUTHORIZED_SUBSTITUTION"
+                and edge["substitution"] != "UNAUTHORIZED_SUBSTITUTE"):
+            raise ValueError("unauthorized relation and substitution finding conflict")
+        if (edge["relation"] == "INFERIOR_SUBSTITUTION"
+                and edge["substitution"] != "INFERIOR_SUBSTITUTE"):
+            raise ValueError("inferior relation and substitution finding conflict")
         if edge["duplicate_class"] not in ("DISTINCT_CHARGE", "POSSIBLE_DUPLICATE_OF_PRIOR_LINE", "SAME_UNDERLYING_CHARGE", "AMBIGUOUS"):
             raise ValueError("unknown duplicate enum")
         key = (edge["order_line_id"], edge["delivery_line_id"], edge["invoice_line_id"])
@@ -216,11 +261,17 @@ def validate_proposal(proposal, order, delivery, invoice):
         seen_invoice.add(edge["invoice_line_id"])
     if not isinstance(proposal["obligations"], dict):
         raise ValueError("obligation findings invalid")
-    expected = {x["obligation_id"] for x in order["obligations"]}
+    expected = {x["obligation_id"] for x in order["obligations"] if x["evaluation_mode"] == "SEMANTIC"}
     if set(proposal["obligations"]) != expected:
         raise ValueError("missing or invented obligation findings")
     if any(v not in ("PASS", "FAIL", "AMBIGUOUS", "INSUFFICIENT_EVIDENCE") for v in proposal["obligations"].values()):
         raise ValueError("unknown obligation result")
+    if not proposal["evidence_sufficient"]:
+        if proposal["edges"]:
+            raise ValueError("insufficient evidence proposal cannot assert semantic edges")
+        if any(value != "INSUFFICIENT_EVIDENCE" for value in proposal["obligations"].values()):
+            raise ValueError("insufficient evidence proposal must fail semantic obligations closed")
+        return proposal
     # Every supplied record line must be accounted for, including explicit
     # unrelated/ambiguous findings; omission cannot silently erase a conflict.
     if order_ids and not proposal["edges"]:

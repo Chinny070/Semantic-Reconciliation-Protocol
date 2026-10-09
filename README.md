@@ -19,12 +19,13 @@ portable reconciliation certificate
 ## What is implemented
 
 - **Semantic Line-Item Graph:** bounded order/delivery/invoice edges with typed relation and substitution classes.
-- **Commercial Obligation Graph:** bounded obligation IDs and semantic findings are included in certificates. Deterministic typed enforcement for every numeric obligation subtype is incomplete; see the release audit.
+- **Commercial Obligation Graph:** bounded typed obligations include deterministic delivery deadlines, unit-price ceilings, maximum freight totals, and permitted charge classes, plus semantic location, certificate, serial, inspection, and service-milestone findings. Deterministic values are checked in contract code; the model does not calculate or decide numeric limits.
 - **Quantity–Semantics Separation:** bounded unit conversions are frozen in the order; record submitters cannot supply ratios, and multiplication/divisibility/consumption happen in deterministic code.
 - **Substitution Policy Engine:** policy is frozen in the order and constrains the accepted semantic substitution class.
 - **Partial fulfillment:** consumption records remaining order capacity across receipts.
 - **Duplicate prevention:** invoice-number/content identity and semantic prior-charge findings block reuse; per-source remaining quantities permit valid partial consumption without double use.
-- **Correction lineage:** delivery and invoice successors preserve old records and supersede them for future reconciliation.
+- **Correction lineage:** immutable delivery and invoice successors preserve readable historical records and supersede predecessors for future reconciliation. Orders are immutable in v1, and finalized quantity consumption is not reversible; corrections that require either capability need a future protocol version.
+- **Evidence failure:** when validators agree that a required external source is unavailable, the contract stores an `EVIDENCE_UNAVAILABLE` certificate with no semantic edges and no consumption. A source disagreement fails without state advance and is not treated as fraud or a mismatch.
 - **Evidence-backed challenges:** up to three new-evidence findings can challenge a receipt edge; a challenge cannot rewrite the receipt or quantity ledger.
 - **Portable certificate:** stored JSON view binds order, policy, record/evidence roots, semantic edges, deterministic consumption, quantity digests, exceptions, and consensus output.
 - **Bounded state:** at most 64 orders, 64 deliveries, 64 invoices and 64 receipts; record lines and evidence sizes are also bounded.
@@ -45,7 +46,7 @@ Direct Mode mocks only nondeterminism; it is not proof of real validator consens
 
 ## Release status
 
-The latest source is deployed to Studionet, but the candidate is **not frozen or submission-ready**. The latest deployment still needs its complete live scenario suite, deployed-source parity, Explorer verification, and closure of the typed-obligation and amendment/reversal gaps. See [deployment](docs/DEPLOYMENT.md) and [cold rejection audit](docs/STEWARD_REJECTION_AUDIT.md).
+The current candidate remains **not frozen or submission-ready** until the latest source's full live scenario matrix, source parity, Explorer check, and steward rejection audit are verified. V1 intentionally excludes order amendments and consumption reversals; those are scope limits, not implied features. See [deployment](docs/DEPLOYMENT.md), [correction lineage](docs/CORRECTIONS.md), and [release verification](docs/RELEASE_CANDIDATE_VERIFICATION.md).
 
 ## Reusable consumers
 

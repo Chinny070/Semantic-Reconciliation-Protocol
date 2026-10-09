@@ -21,7 +21,7 @@ def system():
         yield contract, vm
 
 
-def order(order_id="PO-1", quantity=10, policy="EQUIVALENT_ALLOWED", max_price=100):
+def order(order_id="PO-1", quantity=10, policy="EQUIVALENT_ALLOWED", max_price=100, obligations=None):
     return {
         "order_id": order_id,
         "counterparty": "0x0000000000000000000000000000000000000002",
@@ -31,7 +31,7 @@ def order(order_id="PO-1", quantity=10, policy="EQUIVALENT_ALLOWED", max_price=1
             "unit_conversions": [{"unit": "bottle", "numerator": 1, "denominator": 1}],
             "substitution_policy": policy, "named_alternatives": [], "criticality": "STANDARD",
         }],
-        "obligations": [],
+        "obligations": obligations or [],
     }
 
 

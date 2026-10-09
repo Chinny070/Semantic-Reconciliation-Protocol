@@ -8,7 +8,7 @@ spec = importlib.util.spec_from_file_location(
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 _validate_proposal = module.validate_proposal
-from conftest import order, proposal, record
+from conftest import mock_matching, order, proposal, record
 
 
 def test_typed_proposal_rejects_unknown_ids_and_enum():
@@ -36,6 +36,34 @@ def test_validator_rejects_forged_leader_result():
         assert False, "empty forged answer unexpectedly validated as a match"
     except ValueError:
         pass
+
+
+def test_independent_validator_rejects_well_formed_decision_critical_forgery(system):
+    c, vm = system
+    c.create_order(json.dumps(order()))
+    c.register_delivery(json.dumps(record("delivery", "D-1")))
+    c.register_invoice(json.dumps(record("invoice", "I-1")))
+    honest = proposal()
+    mock_matching(vm, honest)
+    c.reconcile("D-1", "I-1")
+    forged_outputs = []
+    unrelated = proposal(relation="UNRELATED", substitution="UNAUTHORIZED_SUBSTITUTE")
+    forged_outputs.append(unrelated)
+    fabricated_id = proposal()
+    fabricated_id["edges"][0]["invoice_line_id"] = "FABRICATED-I9"
+    forged_outputs.append(fabricated_id)
+    unsupported_packaging = proposal(relation="PACKAGING_EQUIVALENT", substitution="EXACT")
+    forged_outputs.append(unsupported_packaging)
+    fabricated_duplicate = proposal(duplicate="POSSIBLE_DUPLICATE_OF_PRIOR_LINE")
+    forged_outputs.append(fabricated_duplicate)
+    omitted_critical_field = proposal()
+    del omitted_critical_field["edges"][0]["duplicate_class"]
+    forged_outputs.append(omitted_critical_field)
+    unknown_enum = proposal()
+    unknown_enum["edges"][0]["substitution"] = "MODEL_APPROVES"
+    forged_outputs.append(unknown_enum)
+    for forged in forged_outputs:
+        assert vm.run_validator(leader_result=forged) is False, forged
 
 
 def test_bool_is_not_accepted_as_integer_quantity(system):

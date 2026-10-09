@@ -180,6 +180,24 @@ def test_superior_substitution_is_allowed_only_when_frozen_policy_allows(system)
     assert cert["consumed"][0]["quantity"] == 10
 
 
+def test_inferior_substitution_never_consumes(system):
+    c, vm = system
+    setup_records(c)
+    mock_matching(vm, proposal(relation="INFERIOR_SUBSTITUTION", substitution="INFERIOR_SUBSTITUTE"))
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["consumed"] == []
+    assert "INFERIOR_SUBSTITUTION" in cert["exceptions"]
+
+
+def test_ambiguous_substitution_does_not_consume(system):
+    c, vm = system
+    setup_records(c)
+    mock_matching(vm, proposal(relation="AMBIGUOUS", substitution="AMBIGUOUS"))
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["consumed"] == []
+    assert "AMBIGUOUS_MATCH" in cert["exceptions"]
+
+
 def test_superior_substitution_is_forbidden_by_equivalent_only_policy(system):
     c, vm = system
     setup_records(c, order_obj=order(policy="EQUIVALENT_ALLOWED"))
@@ -228,6 +246,88 @@ def test_late_delivery_fails_closed_using_chain_timestamp(system):
     assert "LATE_DELIVERY" in cert["exceptions"]
 
 
+def test_deterministic_max_freight_obligation_blocks_clear_reconciliation(system):
+    c, vm = system
+    obligations = [{
+        "obligation_id": "FREIGHT-CAP", "type": "MAX_FREIGHT_CHARGE",
+        "definition": "Freight charges must not exceed the agreed cap.",
+        "evaluation_mode": "DETERMINISTIC", "criticality": "CRITICAL",
+        "parameters": {"maximum_amount_minor": 500},
+    }]
+    invoice = record("invoice", "I-1", price=90)
+    invoice["lines"][0]["charge_class"] = "FREIGHT"
+    invoice["lines"][0]["unit_price_minor"] = 600
+    o = order(obligations=obligations)
+    o["lines"][0]["charge_class"] = "FREIGHT"
+    setup_records(c, order_obj=o,
+                  delivery=record("delivery", "D-1", description="Freight service"), invoice=invoice)
+    mock_matching(vm, proposal())
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["obligations"]["FREIGHT-CAP"] == "FAIL"
+    assert cert["consumed"] == []
+    assert "OBLIGATION_EXCEPTION" in cert["exceptions"]
+
+
+def test_deterministic_line_price_obligation_blocks_consumption(system):
+    c, vm = system
+    obligations = [{
+        "obligation_id": "PRICE-CAP", "type": "MAX_UNIT_PRICE",
+        "definition": "The negotiated unit ceiling is 80.",
+        "evaluation_mode": "DETERMINISTIC", "criticality": "CRITICAL",
+        "parameters": {"order_line_id": "O1", "maximum_unit_price_minor": 80},
+    }]
+    setup_records(c, order_obj=order(obligations=obligations), invoice=record("invoice", "I-1", price=90))
+    mock_matching(vm, proposal())
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["obligations"]["PRICE-CAP"] == "FAIL"
+    assert cert["consumed"] == []
+
+
+def test_semantic_document_obligation_failure_is_not_computed_by_contract_arithmetic(system):
+    c, vm = system
+    obligations = [{
+        "obligation_id": "CERT", "type": "REQUIRED_CERTIFICATE",
+        "definition": "A valid inspection certificate must accompany these gloves.",
+        "evaluation_mode": "SEMANTIC", "criticality": "CRITICAL", "parameters": {},
+    }]
+    setup_records(c, order_obj=order(obligations=obligations))
+    response = proposal()
+    response["obligations"] = {"CERT": "FAIL"}
+    mock_matching(vm, response)
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["obligations"]["CERT"] == "FAIL"
+    assert cert["consumed"] == []
+    assert "OBLIGATION_EXCEPTION" in cert["exceptions"]
+
+
+def test_deterministic_obligation_schema_requires_typed_parameters(system):
+    c, vm = system
+    bad = order(obligations=[{
+        "obligation_id": "FREIGHT-CAP", "type": "MAX_FREIGHT_CHARGE",
+        "definition": "cap", "evaluation_mode": "SEMANTIC", "criticality": "CRITICAL",
+        "parameters": {},
+    }])
+    with vm.expect_revert("numeric obligation requires deterministic evaluation"):
+        c.create_order(json.dumps(bad))
+
+
+def test_external_evidence_failure_is_an_agreed_typed_certificate(system):
+    c, vm = system
+    delivery = record("delivery", "D-1")
+    delivery["evidence"] = {
+        "retrieval_kind": "WEB_RENDERED", "source": "http://example.invalid/delivery",
+        "content": "source is unavailable",
+    }
+    setup_records(c, delivery=delivery)
+    failure = {"edges": [], "obligations": {}, "evidence_sufficient": False}
+    mock_matching(vm, failure)
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["reconciliation_status"] == "EVIDENCE_UNAVAILABLE"
+    assert cert["consumed"] == []
+    assert "EVIDENCE_UNAVAILABLE" in cert["exceptions"]
+    assert json.loads(c.get_remaining_quantities("PO-1"))["O1"]["reconciled"] == 0
+
+
 def test_duplicate_reconciliation_cannot_reconsume(system):
     c, vm = system
     setup_records(c)
@@ -249,9 +349,11 @@ def test_semantic_duplicate_is_not_consumed(system):
 def test_insufficient_evidence_fails_closed(system):
     c, vm = system
     setup_records(c)
-    mock_matching(vm, proposal(sufficient=False))
-    with vm.expect_revert("evidence is insufficient"):
-        c.reconcile("D-1", "I-1")
+    mock_matching(vm, {"edges": [], "obligations": {}, "evidence_sufficient": False})
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["reconciliation_status"] == "EVIDENCE_UNAVAILABLE"
+    assert cert["consumed"] == []
+    assert "EVIDENCE_UNAVAILABLE" in cert["exceptions"]
 
 
 def test_malformed_model_output_fails_closed_without_receipt(system):
@@ -263,15 +365,16 @@ def test_malformed_model_output_fails_closed_without_receipt(system):
     assert c.get_reconciliation_certificate("R1") == ""
 
 
-def test_invalid_external_evidence_route_fails_closed_without_receipt(system):
+def test_invalid_external_evidence_route_records_safe_unavailable_result(system):
     c, vm = system
     d = record("delivery", "D-1")
     d["evidence"] = {"retrieval_kind": "WEB_RENDERED", "source": "http://example.test/receipt", "content": "unavailable"}
     setup_records(c, delivery=d)
-    mock_matching(vm, proposal())
-    with vm.expect_revert("semantic consensus failed closed"):
-        c.reconcile("D-1", "I-1")
-    assert c.get_reconciliation_certificate("R1") == ""
+    mock_matching(vm, {"edges": [], "obligations": {}, "evidence_sufficient": False})
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["reconciliation_status"] == "EVIDENCE_UNAVAILABLE"
+    assert cert["consumed"] == []
+    assert c.get_reconciliation_certificate("R1") == json.dumps(cert, sort_keys=True, separators=(",", ":"))
 
 
 def test_evidence_backed_challenge_is_bounded_and_does_not_rewrite_receipt(system):

@@ -44,7 +44,7 @@ def _id(prefix):
 
 
 def _order(order_id, counterparty, quantity=10, unit="each", conversions=None, policy="EQUIVALENT_ALLOWED",
-           description="Portland cement grade 42.5", max_price=100, deadline=0):
+           description="Portland cement grade 42.5", max_price=100, deadline=0, obligations=None):
     if conversions is None:
         conversions = [{"unit": unit, "numerator": 1, "denominator": 1}]
     return {
@@ -63,7 +63,7 @@ def _order(order_id, counterparty, quantity=10, unit="each", conversions=None, p
             "named_alternatives": [],
             "criticality": "STANDARD",
         }],
-        "obligations": [],
+        "obligations": obligations or [],
     }
 
 
@@ -132,17 +132,36 @@ def _receipt_for_order(contract, order_id):
     return json.loads(raw)
 
 
-def _record_scenario(name, transactions, result):
+def _record_scenario(contract, name, transactions, result, evidence_sources=None, quantity_before=None):
     EVIDENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
     evidence = {}
     if EVIDENCE_FILE.exists():
         evidence = json.loads(EVIDENCE_FILE.read_text(encoding="utf-8"))
+    order_id = result.get("order_id") if isinstance(result, dict) else None
+    quantity_after = None
+    if order_id:
+        raw_remaining = contract.get_remaining_quantities(args=[order_id]).call()
+        quantity_after = json.loads(raw_remaining) if raw_remaining else {}
+    if quantity_before is None and quantity_after is not None:
+        quantity_before = json.loads(json.dumps(quantity_after))
+        for item in result.get("consumed", []):
+            row = quantity_before.get(item["order_line_id"], {})
+            quantity = item["quantity"]
+            for key in ("delivered", "invoiced", "reconciled"):
+                row[key] = max(0, row.get(key, 0) - quantity)
     evidence[name] = {
         "verified": True,
+        "contract_address": canonical_address(),
+        "order_id": order_id,
         "transactions": [tx["tx_id"] for tx in transactions],
         "final_statuses": [tx["status_name"] for tx in transactions],
         "results": [tx.get("result_name") for tx in transactions],
         "stored_result": result,
+        "quantity_before": quantity_before,
+        "quantity_after": quantity_after,
+        "consumed_quantity": sum(item["quantity"] for item in result.get("consumed", []))
+        if isinstance(result, dict) else 0,
+        "evidence_sources": evidence_sources or [],
     }
     EVIDENCE_FILE.write_text(json.dumps(evidence, sort_keys=True, indent=2), encoding="utf-8")
     print("LIVE_EVIDENCE " + json.dumps({"scenario": name, **evidence[name]}, sort_keys=True))
@@ -166,7 +185,23 @@ def test_live_semantic_match_with_rendered_public_evidence(live_contract):
     cert = _receipt_for_order(contract, order_id)
     assert cert["reconciliation_status"] == "MATCHED", cert
     assert cert["consumed"][0]["quantity"] == 10, cert
-    _record_scenario("semantic_match_rendered_evidence", txs, cert)
+    _record_scenario(contract, "semantic_match_rendered_evidence", txs, cert,
+                     [DELIVERY_FIXTURE_URL, INVOICE_FIXTURE_URL])
+
+
+def test_live_exact_substitution_accepted(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-EXACT")
+    description = "Nitrile examination gloves, XL, powder free, 4 mil"
+    order = _order(order_id, account.address, quantity=10, policy="EXACT_REQUIRED", description=description)
+    delivery = _record("delivery", _id("DEL"), order_id, description=description)
+    invoice = _record("invoice", _id("INV"), order_id, description=description, price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["consumed"][0]["quantity"] == 10, cert
+    assert cert["semantic_edges"][0]["substitution"] == "EXACT", cert
+    _record_scenario(contract, "exact_item_accepted", txs, cert)
 
 
 def test_live_packaging_equivalence(live_contract):
@@ -185,7 +220,8 @@ def test_live_packaging_equivalence(live_contract):
     cert = _receipt_for_order(contract, order_id)
     assert cert["consumed"][0]["quantity"] == 24, cert
     assert cert["semantic_edges"][0]["relation"] == "PACKAGING_EQUIVALENT", cert
-    _record_scenario("packaging_equivalence", txs, cert)
+    _record_scenario(contract, "packaging_equivalence", txs, cert,
+                     [delivery["evidence"]["source"], invoice["evidence"]["source"]])
 
 
 def test_live_partial_fulfillment(live_contract):
@@ -199,7 +235,8 @@ def test_live_partial_fulfillment(live_contract):
     cert = _receipt_for_order(contract, order_id)
     assert cert["reconciliation_status"] == "PARTIAL_MATCH", cert
     assert cert["consumed"][0]["quantity"] == 4, cert
-    _record_scenario("partial_fulfillment", txs, cert)
+    _record_scenario(contract, "partial_fulfillment", txs, cert,
+                     [delivery["evidence"]["source"], invoice["evidence"]["source"]])
 
 
 def test_live_allowed_equivalent_substitution(live_contract):
@@ -216,23 +253,60 @@ def test_live_allowed_equivalent_substitution(live_contract):
     cert = _receipt_for_order(contract, order_id)
     assert cert["consumed"][0]["quantity"] == 10, cert
     assert cert["semantic_edges"][0]["substitution"] == "ALLOWED_EQUIVALENT", cert
-    _record_scenario("allowed_equivalent_substitution", txs, cert)
+    _record_scenario(contract, "allowed_equivalent_substitution", txs, cert,
+                     [delivery["evidence"]["source"], invoice["evidence"]["source"]])
 
 
 def test_live_unauthorized_substitution(live_contract):
     contract, account = live_contract
     order_id = _id("LIVE-SUB-NO")
     order = _order(order_id, account.address, quantity=10, policy="EXACT_REQUIRED",
-                   description="Nitrile examination gloves XL")
-    delivery = _record("delivery", _id("DEL"), order_id, quantity=10, description="Latex examination gloves XL")
+                   description="Powder-free examination gloves made from nitrile polymer, size XL")
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
+                       description="Powder-free examination gloves made from natural latex, size XL")
     invoice = _record("invoice", _id("INV"), order_id, quantity=10,
-                      description="Latex gloves size XL", price=90)
+                      description="Natural latex examination gloves, powder free, XL", price=90)
     txs = _publish(contract, account, order, delivery, invoice)
     txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
     cert = _receipt_for_order(contract, order_id)
     assert cert["consumed"] == [], cert
     assert "UNAUTHORIZED_SUBSTITUTION" in cert["exceptions"], cert
-    _record_scenario("unauthorized_substitution", txs, cert)
+    _record_scenario(contract, "unauthorized_substitution", txs, cert,
+                     [delivery["evidence"]["source"], invoice["evidence"]["source"]])
+
+
+def test_live_inferior_substitution_rejected(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-SUB-INFERIOR")
+    order = _order(order_id, account.address, quantity=10, policy="SUPERIOR_ALLOWED",
+                   description="Nitrile examination gloves XL, powder free, 4 mil")
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
+                       description="Nitrile examination gloves XL, powder free, 2 mil")
+    invoice = _record("invoice", _id("INV"), order_id, quantity=10,
+                      description="Nitrile exam gloves XL 2 mil", price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["consumed"] == [], cert
+    assert "INFERIOR_SUBSTITUTION" in cert["exceptions"], cert
+    _record_scenario(contract, "inferior_substitution_rejected", txs, cert)
+
+
+def test_live_ambiguous_substitution_does_not_consume(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-SUB-AMBIG")
+    order = _order(order_id, account.address, quantity=10, policy="EXACT_REQUIRED",
+                   description="EPDM industrial seal, model QZ-4, 50 mm diameter")
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
+                       description="Industrial seal, 50 mm diameter")
+    invoice = _record("invoice", _id("INV"), order_id, quantity=10,
+                      description="Seal ring, 50 mm", price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["consumed"] == [], cert
+    assert cert["semantic_edges"][0]["substitution"] == "AMBIGUOUS", cert
+    _record_scenario(contract, "ambiguous_substitution_no_consumption", txs, cert)
 
 
 def test_live_disguised_duplicate_invoice_blocked(live_contract):
@@ -248,6 +322,7 @@ def test_live_disguised_duplicate_invoice_blocked(live_contract):
     txs.append(_submit(contract, "reconcile", [delivery1["record_id"], invoice1["record_id"]], account))
     first = _receipt_for_order(contract, order_id)
     assert first["consumed"][0]["quantity"] == 10, first
+    quantity_before_duplicate = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
     delivery2 = _record("delivery", _id("DEL"), order_id, quantity=10,
                         description="OPC Type I cement, 42.5 strength",
                         evidence_kind="WEB_RENDERED", evidence_source=DELIVERY_FIXTURE_URL)
@@ -263,22 +338,100 @@ def test_live_disguised_duplicate_invoice_blocked(live_contract):
     assert cert["reconciliation_id"] != first["reconciliation_id"], cert
     assert cert["consumed"] == [], cert
     assert "DUPLICATE_BILLING_ATTEMPT" in cert["exceptions"], cert
-    _record_scenario("disguised_duplicate_blocked", txs, cert)
+    _record_scenario(contract, "disguised_duplicate_blocked", txs, cert,
+                     [DELIVERY_FIXTURE_URL, INVOICE_FIXTURE_URL], quantity_before_duplicate)
+
+
+def test_live_quantity_shortfall_is_deterministic(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-SHORT")
+    order = _order(order_id, account.address, quantity=10, description="Sterile saline bottle")
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=4, description="Sterile saline bottle")
+    invoice = _record("invoice", _id("INV"), order_id, quantity=9,
+                      description="Sterile saline bottle", price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["consumed"][0]["quantity"] == 4, cert
+    assert "QUANTITY_SHORTFALL" in cert["exceptions"], cert
+    _record_scenario(contract, "quantity_shortfall", txs, cert)
+
+
+def test_live_deterministic_price_obligation_blocks_semantic_match(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-OBLIGATION")
+    obligations = [{
+        "obligation_id": "UNIT-PRICE-CAP", "type": "MAX_UNIT_PRICE",
+        "definition": "The negotiated unit price must not exceed 80 minor currency units.",
+        "evaluation_mode": "DETERMINISTIC", "criticality": "CRITICAL",
+        "parameters": {"order_line_id": "O1", "maximum_unit_price_minor": 80},
+    }]
+    order = _order(order_id, account.address, quantity=10, max_price=100,
+                   description="Sterile saline bottle", obligations=obligations)
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
+                       description="Sterile saline bottle")
+    invoice = _record("invoice", _id("INV"), order_id, quantity=10,
+                      description="Sterile saline bottle", price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["semantic_edges"][0]["relation"] == "EXACT_MATCH", cert
+    assert cert["obligations"]["UNIT-PRICE-CAP"] == "FAIL", cert
+    assert cert["consumed"] == [], cert
+    _record_scenario(contract, "commercial_obligation_price_failure", txs, cert)
+
+
+def test_live_invoice_correction_successor_preserves_history(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-CORRECTION")
+    order = _order(order_id, account.address, quantity=10, description="Sterile saline bottle")
+    txs = [_submit(contract, "create_order", [json.dumps(order, separators=(",", ":"))], account)]
+    old_delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
+                           description="Old delivery text requiring correction")
+    new_delivery = _record("delivery", _id("DEL"), order_id, quantity=10,
+                           description="Sterile saline bottle")
+    new_delivery["predecessor_id"] = old_delivery["record_id"]
+    old_invoice = _record("invoice", _id("INV"), order_id, quantity=10,
+                          description="Old invoice text requiring correction", price=90)
+    new_invoice = _record("invoice", _id("INV"), order_id, quantity=10,
+                          description="Sterile saline bottle", price=90)
+    new_invoice["predecessor_id"] = old_invoice["record_id"]
+    new_invoice["invoice_number"] = old_invoice["invoice_number"]
+    txs.extend([
+        _submit(contract, "register_delivery", [json.dumps(old_delivery, separators=(",", ":"))], account),
+        _submit(contract, "register_delivery", [json.dumps(new_delivery, separators=(",", ":"))], account),
+        _submit(contract, "register_invoice", [json.dumps(old_invoice, separators=(",", ":"))], account),
+        _submit(contract, "register_invoice", [json.dumps(new_invoice, separators=(",", ":"))], account),
+    ])
+    assert contract.get_successor(args=["D", old_delivery["record_id"]]).call() == new_delivery["record_id"]
+    assert contract.get_successor(args=["I", old_invoice["record_id"]]).call() == new_invoice["record_id"]
+    assert json.loads(contract.get_invoice_record(args=[old_invoice["record_id"]]).call())["record_id"] == old_invoice["record_id"]
+    assert json.loads(contract.get_invoice_record(args=[new_invoice["record_id"]]).call())["predecessor_id"] == old_invoice["record_id"]
+    txs.append(_submit(contract, "reconcile", [new_delivery["record_id"], new_invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["delivery_id"] == new_delivery["record_id"]
+    assert cert["invoice_id"] == new_invoice["record_id"]
+    assert cert["consumed"][0]["quantity"] == 10, cert
+    _record_scenario(contract, "invoice_correction_successor", txs, cert)
 
 
 def test_live_external_route_failure_is_fail_closed(live_contract):
     contract, account = live_contract
     order_id = _id("LIVE-FAIL")
     order = _order(order_id, account.address, quantity=10)
+    unavailable_url = "https://unavailable.semantic-reconciliation.invalid/delivery"
     delivery = _record("delivery", _id("DEL"), order_id, evidence_kind="WEB_RENDERED",
-                       evidence_source="http://example.invalid/delivery", evidence_content="registered unavailable source")
+                       evidence_source=unavailable_url, evidence_content="registered unavailable source")
     invoice = _record("invoice", _id("INV"), order_id)
     txs = _publish(contract, account, order, delivery, invoice)
     before = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
-    failed = _submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account,
-                     should_succeed=False)
-    txs.append(failed)
+    reconciled = _submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account)
+    txs.append(reconciled)
     after = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
     assert after == before
-    _record_scenario("negative_external_failure_fail_closed", txs, {"remaining_before": before, "remaining_after": after,
-                                                                    "tx_execution_result_name": failed.get("tx_execution_result_name")})
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["reconciliation_status"] == "EVIDENCE_UNAVAILABLE", cert
+    assert cert["consumed"] == [] and "EVIDENCE_UNAVAILABLE" in cert["exceptions"], cert
+    assert "DUPLICATE_BILLING_ATTEMPT" not in cert["exceptions"], cert
+    _record_scenario(contract, "negative_external_failure_fail_closed", txs, cert,
+                     [unavailable_url], quantity_before=before)

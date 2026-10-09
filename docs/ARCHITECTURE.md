@@ -12,12 +12,12 @@ One order has 1–12 lines and 0–12 obligations. Each delivery or invoice has 
 
 1. Freeze order and substitution policy hashes.
 2. Register delivery and invoice definitions with evidence sources.
-3. Leader retrieves each source once, classifies typed edges, substitutions, duplicates and obligations.
-4. Each validator independently repeats observation/classification and compares every decision-critical field.
-5. Deterministic code validates the returned proposal, policy and obligations; normalizes only by registered integer ratios; applies remaining capacities and max prices; then writes a receipt/certificate.
+3. Leader retrieves each source once, classifies typed edges, semantic substitution classes, duplicates and semantic obligations.
+4. Each validator independently repeats observation/classification and compares only decision-critical IDs, relation/substitution/duplicate enums, semantic obligation results, and evidence sufficiency. Prose and confidence are not part of the decision schema.
+5. Deterministic code validates the returned proposal, applies the frozen substitution policy, evaluates typed numeric obligations, normalizes only by registered integer ratios, applies remaining capacities and price ceilings, then writes a receipt/certificate.
 
-No storage mutation occurs inside nondeterministic functions. Any unavailable source, malformed proposal, disagreement or insufficient evidence reverts; it is not finalized as breach.
+No storage mutation occurs inside nondeterministic functions. If external retrieval is unavailable and the independent validators agree on that result, the contract stores an `EVIDENCE_UNAVAILABLE` certificate with no semantic edges and no quantity consumption. If validators see different evidence or disagree on decision-critical findings, the transaction fails closed without state advance; that disagreement is not a commercial accusation.
 
 ## Limits and intentionally unimplemented scope
 
-The contract supports bounded one-to-one source-line allocation, split consumption of remaining line capacity, typed obligation findings, and up to three evidence-backed challenge findings per receipt. Challenges do not rewrite or reverse receipts. It does not implement payments, frontends, fee settlement, order amendments, consumption reversals, nor multi-line grouped allocation. Certificates are stored as canonical JSON and exposed by view. This is not submission-ready until every deterministic obligation subtype is specified, live validation and source parity pass, and the remote release gates are completed.
+The contract supports bounded one-to-one source-line allocation, split consumption of remaining line capacity, typed semantic and deterministic obligations, immutable delivery/invoice successors with record-read views, and up to three evidence-backed challenge findings per receipt. Challenges do not rewrite or reverse receipts. V1 deliberately does not implement mutable order amendments, consumption reversals, or multi-line grouped allocation. This means a correction that would require reversing already consumed quantity needs a new, separately designed protocol version; the v1 interface does not silently rewrite history. The contract also does not implement payments, frontends, or fee settlement. Certificates are stored as canonical JSON and exposed by view.

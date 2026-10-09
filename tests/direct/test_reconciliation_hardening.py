@@ -41,6 +41,19 @@ def test_successor_cannot_cross_order_lineage(system):
         c.register_delivery(json.dumps(record("delivery", "D-2", order_id="PO-2", predecessor="D-1")))
 
 
+def test_corrected_invoice_can_preserve_invoice_number_and_immutable_lineage(system):
+    c, vm = system
+    c.create_order(json.dumps(order()))
+    original = record("invoice", "I-1", description="original invoice evidence")
+    c.register_invoice(json.dumps(original))
+    corrected = record("invoice", "I-2", predecessor="I-1", description="corrected invoice evidence")
+    corrected["invoice_number"] = original["invoice_number"]
+    c.register_invoice(json.dumps(corrected))
+    assert c.get_successor("I", "I-1") == "I-2"
+    assert json.loads(c.get_invoice_record("I-1"))["record_id"] == "I-1"
+    assert json.loads(c.get_invoice_record("I-2"))["predecessor_id"] == "I-1"
+
+
 def test_more_than_sixty_four_delivery_records_are_rejected(system):
     c, vm = system
     c.create_order(json.dumps(order()))
