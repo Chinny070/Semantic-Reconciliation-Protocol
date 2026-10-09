@@ -442,13 +442,18 @@ class SemanticReconciliation(gl.Contract):
     challenge_counts: gl.storage.TreeMap[str, str]
     challenges: gl.storage.TreeMap[str, str]
     challenge_evidence_used: gl.storage.TreeMap[str, bool]
+    counters: gl.storage.TreeMap[str, str]
 
     def __init__(self):
-        self.order_count = 0
-        self.delivery_count = 0
-        self.invoice_count = 0
-        self.receipt_count = 0
-        self.sequence = 0
+        pass
+
+    def _count(self, name: str) -> int:
+        return int(self.counters.get(name, "0"))
+
+    def _increment(self, name: str) -> int:
+        value = self._count(name) + 1
+        self.counters[name] = str(value)
+        return value
 
     def _require_participant(self, order: dict):
         actor = str(gl.message.sender_address).lower()
@@ -469,9 +474,9 @@ class SemanticReconciliation(gl.Contract):
         ]))
         order["status"] = "SEALED"
         self.orders[order_id] = _canonical(order)
-        if self.order_count >= MAX_HISTORY:
+        if self._count("orders") >= MAX_HISTORY:
             _revert("order history bound reached")
-        self.order_count += 1
+        self._increment("orders")
         self.consumption[order_id] = _canonical({
             line["line_id"]: {"delivered": 0, "invoiced": 0, "reconciled": 0} for line in order["lines"]
         })
@@ -479,7 +484,7 @@ class SemanticReconciliation(gl.Contract):
 
     @gl.public.write
     def register_delivery(self, record_json: str) -> str:
-        if self.delivery_count >= p_MAX_DELIVERY_RECORDS:
+        if self._count("deliveries") >= p_MAX_DELIVERY_RECORDS:
             _revert("delivery history bound reached")
         record = _validate_record(record_json, "delivery")
         if record["order_id"] not in self.orders:
@@ -501,12 +506,12 @@ class SemanticReconciliation(gl.Contract):
             _revert("duplicate delivery evidence")
         self.delivery_source_hashes[evidence_identity] = True
         self.deliveries[record_id] = _canonical(record)
-        self.delivery_count += 1
+        self._increment("deliveries")
         return record["definition_hash"]
 
     @gl.public.write
     def register_invoice(self, record_json: str) -> str:
-        if self.invoice_count >= p_MAX_INVOICE_RECORDS:
+        if self._count("invoices") >= p_MAX_INVOICE_RECORDS:
             _revert("invoice history bound reached")
         record = _validate_record(record_json, "invoice")
         if record["order_id"] not in self.orders:
@@ -532,7 +537,7 @@ class SemanticReconciliation(gl.Contract):
             _revert("duplicate invoice evidence")
         self.invoice_source_hashes[evidence_identity] = True
         self.invoices[record_id] = _canonical(record)
-        self.invoice_count += 1
+        self._increment("invoices")
         return record["definition_hash"]
 
     @gl.public.write
@@ -552,7 +557,7 @@ class SemanticReconciliation(gl.Contract):
         frozen_delivery = json.loads(_canonical(delivery))
         frozen_invoice = json.loads(_canonical(invoice))
         prior_charges = []
-        for receipt_number in range(1, self.sequence + 1):
+        for receipt_number in range(1, self._count("sequence") + 1):
             prior_raw = self.receipts.get("R" + str(receipt_number), "")
             if not prior_raw:
                 continue
@@ -601,8 +606,19 @@ class SemanticReconciliation(gl.Contract):
         used_i = set()
         for edge in proposal["edges"]:
             relation = edge["relation"]
+            if relation == "UNAUTHORIZED_SUBSTITUTION" or edge["substitution"] == "UNAUTHORIZED_SUBSTITUTE":
+                exceptions.append("UNAUTHORIZED_SUBSTITUTION")
+                continue
+            if relation == "INFERIOR_SUBSTITUTION" or edge["substitution"] == "INFERIOR_SUBSTITUTE":
+                exceptions.append("INFERIOR_SUBSTITUTION")
+                continue
             if relation not in ("EXACT_MATCH", "ALLOWED_EQUIVALENT", "PACKAGING_EQUIVALENT", "PARTIAL_MATCH"):
-                exceptions.append("SEMANTIC_MISMATCH" if relation not in ("AMBIGUOUS", "INSUFFICIENT_EVIDENCE") else "AMBIGUOUS_MATCH")
+                exception = (
+                    "AMBIGUOUS_MATCH" if relation == "AMBIGUOUS"
+                    else "INSUFFICIENT_EVIDENCE" if relation == "INSUFFICIENT_EVIDENCE"
+                    else "SEMANTIC_MISMATCH"
+                )
+                exceptions.append(exception)
                 continue
             if edge["duplicate_class"] != "DISTINCT_CHARGE":
                 exceptions.append("DUPLICATE_BILLING_ATTEMPT")
@@ -610,10 +626,6 @@ class SemanticReconciliation(gl.Contract):
             ordered_line = order_lines[edge["order_line_id"]]
             dline = delivery_lines[edge["delivery_line_id"]]
             iline = invoice_lines[edge["invoice_line_id"]]
-            if ((dline["unit"] != ordered_line["unit"] or iline["unit"] != ordered_line["unit"])
-                    and relation != "PACKAGING_EQUIVALENT"):
-                exceptions.append("SEMANTIC_MISMATCH")
-                continue
             deadline = ordered_line["deadline_timestamp"]
             if deadline and delivery["registered_at"] > deadline:
                 exceptions.append("LATE_DELIVERY")
@@ -686,9 +698,8 @@ class SemanticReconciliation(gl.Contract):
                 "invoice_line_id": edge["invoice_line_id"],
                 "quantity": amount,
             })
-        self.sequence += 1
-        reconciliation_id = "R" + str(self.sequence)
-        if self.receipt_count >= MAX_HISTORY:
+        reconciliation_id = "R" + str(self._increment("sequence"))
+        if self._count("receipts") >= MAX_HISTORY:
             _revert("receipt history bound reached")
         any_remaining = any(
             current[line["line_id"]]["reconciled"] < line["quantity"]
@@ -736,7 +747,7 @@ class SemanticReconciliation(gl.Contract):
         certificate["certificate_hash"] = _digest(_canonical(certificate))
         self.consumption[order["order_id"]] = _canonical(current)
         self.receipts[reconciliation_id] = _canonical(certificate)
-        self.receipt_count += 1
+        self._increment("receipts")
         self.used_record_pairs[pair_key] = True
         return _canonical(certificate)
 
@@ -801,8 +812,7 @@ class SemanticReconciliation(gl.Contract):
             _revert("challenge consensus failed closed")
         if not checked["evidence_sufficient"]:
             _revert("challenge evidence is insufficient")
-        self.sequence += 1
-        challenge_id = "C" + str(self.sequence)
+        challenge_id = "C" + str(self._increment("sequence"))
         result = {
             "version": 1,
             "challenge_id": challenge_id,
@@ -836,7 +846,7 @@ class SemanticReconciliation(gl.Contract):
         if certificate["reconciliation_status"] != "MATCHED" or certificate["critical_exception_count"] != 0:
             return False
         if int(self.challenge_counts.get(reconciliation_id, "0")) > 0:
-            for challenge_number in range(1, self.sequence + 1):
+            for challenge_number in range(1, self._count("sequence") + 1):
                 challenge_raw = self.challenges.get("C" + str(challenge_number), "")
                 if not challenge_raw:
                     continue

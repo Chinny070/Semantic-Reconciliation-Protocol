@@ -117,16 +117,15 @@ def test_unfrozen_packaging_unit_fails_closed(system):
     assert "UNSUPPORTED_UNIT" in cert["exceptions"]
 
 
-def test_different_units_require_packaging_equivalence_finding(system):
+def test_different_units_use_frozen_ratios_independent_of_semantic_label(system):
     c, vm = system
     o = order(quantity=24)
     o["lines"][0]["unit_conversions"].append({"unit": "carton", "numerator": 24, "denominator": 1})
     setup_records(c, order_obj=o, delivery=record("delivery", "D-1", quantity=1, unit="carton"),
                   invoice=record("invoice", "I-1", quantity=24))
-    mock_matching(vm, proposal(relation="EXACT_MATCH", substitution="EXACT"))
+    mock_matching(vm, proposal(relation="ALLOWED_EQUIVALENT", substitution="ALLOWED_EQUIVALENT"))
     cert = json.loads(c.reconcile("D-1", "I-1"))
-    assert cert["consumed"] == []
-    assert "SEMANTIC_MISMATCH" in cert["exceptions"]
+    assert cert["consumed"][0]["quantity"] == 24
 
 
 
@@ -149,6 +148,15 @@ def test_unauthorized_substitution_fails_closed(system):
     c, vm = system
     setup_records(c, order_obj=order(policy="EXACT_REQUIRED"))
     mock_matching(vm, proposal(substitution="UNAUTHORIZED_SUBSTITUTE"))
+    cert = json.loads(c.reconcile("D-1", "I-1"))
+    assert cert["consumed"] == []
+    assert "UNAUTHORIZED_SUBSTITUTION" in cert["exceptions"]
+
+
+def test_unauthorized_relation_is_attributed_before_semantic_filter(system):
+    c, vm = system
+    setup_records(c, order_obj=order(policy="EXACT_REQUIRED"))
+    mock_matching(vm, proposal(relation="UNAUTHORIZED_SUBSTITUTION", substitution="UNAUTHORIZED_SUBSTITUTE"))
     cert = json.loads(c.reconcile("D-1", "I-1"))
     assert cert["consumed"] == []
     assert "UNAUTHORIZED_SUBSTITUTION" in cert["exceptions"]
