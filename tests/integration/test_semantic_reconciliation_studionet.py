@@ -125,7 +125,9 @@ def _receipt_for_order(contract, order_id):
     for number in range(1, 65):
         raw = contract.get_reconciliation_certificate(args=["R" + str(number)]).call()
         if not raw:
-            continue
+            # Receipt IDs are allocated monotonically, so the first empty slot
+            # ends the bounded scan and avoids unnecessary RPC requests.
+            break
         certificate = json.loads(raw)
         if certificate.get("order_id") == order_id:
             matches.append(certificate)
