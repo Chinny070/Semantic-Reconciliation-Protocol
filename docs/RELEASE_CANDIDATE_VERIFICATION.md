@@ -38,7 +38,7 @@ The unauthorized-substitution case also finalized, with three disagreeing votes 
 ## Required before freeze
 
 1. Restore Studionet access; rerun unauthorized substitution until validators agree on a typed fail-closed finding or identify/fix validator inconsistency. Rerun duplicate and external-route failure gates against this address.
-2. Verify a public Explorer page/transaction trail.
+2. Verify a public Explorer page/transaction trail. A direct open of the CLI-reported Explorer URL at this address was inaccessible through the available browser lookup, so Explorer proof remains unverified.
 3. Complete typed deterministic enforcement for commercial threshold obligations, plus order correction/reversal and required challenge/forged-leader live audits where applicable.
 4. Complete a clean-clone run at `26b55af` and rejection-oriented steward audit; update this record only from observed results.
 
@@ -46,6 +46,7 @@ The unauthorized-substitution case also finalized, with three disagreeing votes 
 
 - Deployment receipt: `0x024a2bf6243324b76de4b7a1234a2a428402341f19ac625c9c28d6c6614b0821`.
 - Unauthorized-substitution disagreement receipt: `0x074dff0f3347ac148be92f7665672439a7a34961365bcc2b8576a43a9aaf2a2c`.
+- External-route failure test retry: could not retrieve contract schema (`gltest` reported failure across default, hosted Studio, and local clients); no scenario transaction was submitted.
 - Current-address successful scenario transactions and certificate details: [live evidence ledger](LIVE_EVIDENCE.md).
 
 Do not call this candidate green, finalized for submission, or frozen until those gates are verified.
