@@ -8,7 +8,7 @@ Retrieved deployed source matched the local source after newline normalization. 
 
 ## Live scenario progress
 
-All thirteen required scenarios have verified expected outcomes on this deployment. Every recorded write receipt is `FINALIZED` with `MAJORITY_AGREE`; all expected/observed comparisons passed. The machine-readable artifact contains transaction IDs, certificates, quantities before and after, and source references. The earlier RPC errors were resolved by running the network calls with authorized outbound access; failed attempts are not counted as scenario outcomes.
+All thirteen required scenarios have verified expected outcomes on this deployment. Every recorded write receipt is `FINALIZED` with `MAJORITY_AGREE`; all expected/observed comparisons passed. I independently fetched all 57 unique transaction receipts from the Studionet RPC and retained each receipt's five validator votes, vote counts, round count, status, and consensus result in the machine-readable artifact. The observed vote splits include agree/idle and agree/disagree combinations as well as unanimous agreement. The earlier RPC errors were resolved by running network calls with authorized outbound access; failed attempts are not counted as scenario outcomes.
 
 | Scenario | Verified observation | State |
 |---|---|---|
@@ -26,4 +26,4 @@ All thirteen required scenarios have verified expected outcomes on this deployme
 | Invoice correction successor | MATCHED; predecessor/successor lineage read; consumed 10 | Verified |
 | External evidence unavailable | EVIDENCE_UNAVAILABLE; consumed 0, no semantic edge | Verified |
 
-Machine-readable evidence is [`artifacts/studionet_live_evidence.json`](../artifacts/studionet_live_evidence.json). It contains 13 verified scenario records, all on the same address. `gltest` clears the artifact directory on startup, so future runs must preserve and merge existing records before replacing this release artifact.
+Machine-readable evidence is [`artifacts/studionet_live_evidence.json`](../artifacts/studionet_live_evidence.json). It contains 13 verified scenario records and RPC-read vote evidence for all 57 unique transactions, all on the same address. `gltest` clears the artifact directory on startup, so future runs must preserve and merge existing records before replacing this release artifact.

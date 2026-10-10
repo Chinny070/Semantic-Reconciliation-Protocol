@@ -23,7 +23,7 @@ Verification date: 2026-10-10. The candidate is deployed on Studionet at `0xEdcd
 
 ## Live scenarios
 
-All thirteen scenario records have verified expectations, finalized receipts, and `MAJORITY_AGREE` results on the same canonical address. Transaction IDs, certificates, before/after ledgers, and evidence sources are in the machine-readable evidence artifact. A record audit confirmed every expected outcome, address, final status, and consensus result.
+All thirteen scenario records have verified expectations, finalized receipts, and `MAJORITY_AGREE` results on the same canonical address. I independently fetched all 57 unique receipts from Studionet RPC. Every receipt is finalized, has five validator vote entries, and reports majority agreement; per-validator votes, counts, and rounds are preserved in the machine-readable evidence. Transaction IDs, certificates, before/after ledgers, and evidence sources are included. A record audit confirmed every expected outcome, address, final status, and consensus result.
 
 The full set includes rendered-evidence semantic match, exact item, packaging equivalence, partial fulfillment, allowed equivalent substitution, unauthorized substitution, inferior substitution, ambiguous substitution, disguised duplicate replay, quantity shortfall, deterministic price obligation failure, invoice correction successor, and external evidence unavailable. The two batches that completed the matrix each exited successfully; all 13 expected/observed comparisons passed.
 
