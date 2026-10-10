@@ -1,6 +1,6 @@
 # Release candidate verification
 
-Verification date: 2026-10-10. The candidate is deployed on Studionet at `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56` (chain ID `61999`). The full 13-scenario live matrix is verified; final GitHub push, clean-clone validation, and clean-worktree checks remain before freeze.
+Verification date: 2026-10-10. The candidate is deployed on Studionet at `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56` (chain ID `61999`). The complete live matrix, validator receipts, source parity, pushed HEAD, fresh-clone validation, and clean worktree gates passed. The candidate is frozen.
 
 ## Local validation
 
@@ -35,4 +35,4 @@ Correction behavior is bounded in v1: orders are sealed and immutable; delivery 
 
 ## Release status
 
-Live matrix, deployment, source parity, and local validation are verified. Freeze only after committing and pushing the final documentation/evidence, running the documented checks from a fresh clone of the pushed HEAD, and confirming the original worktree is clean. No external submission form has been submitted.
+Frozen after the final documentation/evidence commit was pushed, a fresh clone of pushed `main` passed Direct Mode, GenVM lint/typecheck, fixture preflight, and on-chain schema retrieval, and the original worktree was confirmed clean. No external submission form has been submitted; submission materials are prepared in `SUBMISSION.md`.

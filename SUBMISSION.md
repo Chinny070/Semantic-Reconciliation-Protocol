@@ -12,4 +12,4 @@ Semantic Reconciliation Protocol is a reusable GenLayer Intelligent Contract for
 
 **Deployment evidence:** [`0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc`](https://explorer-studio.genlayer.com/tx/0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc), finalized and accepted. All thirteen required live cases have verified evidence in `docs/LIVE_EVIDENCE.md` and `artifacts/studionet_live_evidence.json`.
 
-**Submission status:** Not ready for submission until the final evidence/docs commit is pushed and the clean-clone and clean-worktree gates pass. No portal form has been submitted.
+**Submission status:** Prepared for portal entry. The complete live matrix, validator receipts, source parity, clean-clone checks, pushed HEAD, and clean worktree have been verified. No portal form has been submitted.

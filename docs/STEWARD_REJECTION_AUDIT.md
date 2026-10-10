@@ -16,8 +16,8 @@ Audit target: source commit `3c507a8eb875d8988ce8c14962eafd003fb2e195`, deployed
 | Certificate, state, and validator evidence | PASS | Versioned portable certificates and quantity views were checked for all 13 scenarios. All 57 unique transaction receipts were independently fetched from RPC; each finalized with `MAJORITY_AGREE`, and its five validator votes are retained in the evidence artifact. |
 | Runtime, schema and source parity | PASS | 52 Direct tests, GenVM lint, typecheck, 14-method schema validation, preflight, and deployed-source normalized hash were verified. Deployment finalized with `MAJORITY_AGREE`; Explorer showed finality and accepted deployment. |
 | Novelty / collision | Defensible; not exhaustive | Decision record compares owner primitives and adjacent categories. No exhaustive portfolio, patent, or ecosystem-wide search is claimed. |
-| Live matrix and release reproducibility | Live matrix PASS; repository gates pending | All 13 live scenarios have verified expected results with finalized `MAJORITY_AGREE` receipts. Final docs/evidence push, clean clone, and clean worktree checks remain. |
+| Live matrix and release reproducibility | PASS | All 13 live scenarios and all 57 unique validator receipts were verified. Final evidence/docs are pushed, a fresh clone passed all local gates plus on-chain schema retrieval, and the original worktree is clean. |
 
 ## Decision
 
-The implementation has passed the local validation gates, deployment/source parity, and all required live scenarios. Freeze only after the final evidence/docs commit is pushed and the clean-clone and clean-worktree checks pass. The allocation, correction/reversal, and source-model limits are explicit v1 boundaries.
+The implementation has passed local validation, deployment/source parity, all required live scenarios, and final repository reproducibility checks. The candidate is frozen. The allocation, correction/reversal, and source-model limits are explicit v1 boundaries; this review is not an external steward approval.

@@ -16,4 +16,4 @@ The source has not changed since deployment. Later release documentation and liv
 
 ## Release status
 
-All thirteen required live scenarios have verified expected outcomes, and all recorded writes finalized with `MAJORITY_AGREE`. Final release gates remain: push the evidence/docs commit, verify it from a clean clone, and confirm the worktree is clean. See [live evidence ledger](LIVE_EVIDENCE.md) and [steward rejection audit](STEWARD_REJECTION_AUDIT.md) for the evidence and bounded v1 limitations.
+All thirteen required live scenarios have verified expected outcomes. All 57 unique write receipts were read from Studionet RPC; each finalized with `MAJORITY_AGREE`, and five validator votes per receipt are preserved in the evidence artifact. The release commit is pushed, a fresh clone passed local and deployed-schema checks, and the worktree is clean. The candidate is frozen. See [live evidence ledger](LIVE_EVIDENCE.md) and [steward rejection audit](STEWARD_REJECTION_AUDIT.md) for the evidence and bounded v1 limitations.
