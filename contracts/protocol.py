@@ -215,7 +215,7 @@ def validate_record(raw, kind):
     evidence = record["evidence"]
     if not isinstance(evidence, dict) or set(evidence) != {"retrieval_kind", "source", "content"}:
         raise ValueError("invalid " + kind + " evidence")
-    if evidence["retrieval_kind"] not in ("STRUCTURED_FIXTURE", "API_JSON", "PUBLIC_DOCUMENT", "WEB_RENDERED"):
+    if evidence["retrieval_kind"] not in ("STRUCTURED_FIXTURE", "WEB_RENDERED"):
         raise ValueError("unsupported evidence retrieval kind")
     _bounded_text(evidence["source"], "evidence source", 512)
     _bounded_text(evidence["content"], "evidence content", MAX_EVIDENCE_BYTES)
