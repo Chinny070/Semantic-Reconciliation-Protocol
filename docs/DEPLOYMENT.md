@@ -1,18 +1,19 @@
 # Deployment
 
-## Network
+## Canonical Studionet deployment
 
-Canonical target: GenLayer Studionet, chain ID `61999`, RPC `https://studio.genlayer.com/api`. The installed CLI resolved the matching GenLayer Studio Network immediately before deployment.
+- Network: GenLayer Studionet, chain ID `61999`; RPC `https://studio.genlayer.com/api`.
+- Source commit: `3c507a8eb875d8988ce8c14962eafd003fb2e195`.
+- Deployment transaction: [`0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc`](https://explorer-studio.genlayer.com/tx/0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc).
+- Contract: [`0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56`](https://explorer-studio.genlayer.com/address/0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56).
+- Receipt: `FINALIZED`; GenLayer result `MAJORITY_AGREE`; five validators committed/revealed (three agree, two idle).
+- Explorer transaction page independently shows `FINALIZED`, type `Deploy`, consensus `Accepted`, and the same contract in the linked `To` field. Explorer displayed the contract bytecode input. The linked address route was exposed by the page; its separate detail view did not finish rendering during verification.
+- On-chain schema: 14 methods (9 views and 5 writes).
+- Deployed source parity: retrieved source equals local `contracts/semantic_reconciliation.py` after newline normalization. Both SHA-256 values: `d37eac79db186ab0c7eecd51ae0f86cb6f3ebf4570945f2c54b5a94e1fdd7460`.
+- Contract Git blob for the deployed source commit: `9006c908def47a47137ce952ba6a37d8b4bb371b`.
 
-## Latest deployment
-
-- Source commit: `26b55af617c2a2844b44001fa49c4ea485596238` (`main`)
-- Deployment transaction: `0x024a2bf6243324b76de4b7a1234a2a428402341f19ac625c9c28d6c6614b0821`
-- Contract address: `0xAa78272Caf6EAf7e523E78768319fBc2a65eF795`
-- Receipt: `FINALIZED`; deployment consensus: `MAJORITY_AGREE`; five validator votes were recorded.
-- Retrieved schema: 12 methods (7 views and 5 writes), including `get_latest_reconciliation_for_order`.
-- Deployed-source parity is verified byte-for-byte after line-ending normalization (SHA-256 `da277dea8a0db7f7cd94f5d6c592835ef06095aff7673de9ff2563ff0114f3ff` for both local and deployed source). Explorer evidence remains unverified. Earlier deployed versions are historical and are not interchangeable with this address.
+The source has not changed since deployment. Later release documentation and live-evidence commits do not change the deployed contract blob. Older deployment addresses in Git history are historical and are not substitutes for this canonical address.
 
 ## Release status
 
-This deployment is an unaccepted release candidate, not a frozen or submission-ready build. Four current-address live scenarios passed, one reached a finalized fail-closed disagreement, one timed out while polling, and one could not start during RPC unavailability. See [release verification](RELEASE_CANDIDATE_VERIFICATION.md) and [steward rejection audit](STEWARD_REJECTION_AUDIT.md) for the remaining gates.
+All thirteen required live scenarios have verified expected outcomes, and all recorded writes finalized with `MAJORITY_AGREE`. Final release gates remain: push the evidence/docs commit, verify it from a clean clone, and confirm the worktree is clean. See [live evidence ledger](LIVE_EVIDENCE.md) and [steward rejection audit](STEWARD_REJECTION_AUDIT.md) for the evidence and bounded v1 limitations.

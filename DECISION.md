@@ -39,7 +39,7 @@ The same contract interface and certificate can serve all three without a fronte
 
 ## Hardest risk and evidence strategy
 
-The hardest risk is substantive validator equivalence under changing external evidence and model variance. Each run retrieves each registered web record once per node, derives typed findings, and compares all decision-critical fields. Missing or ambiguous evidence fails closed. Public fixtures provide repeatable live evidence; real-world records are not claimed. Live packaging classification varied across attempts and the latest prompt clarification was not verified on the latest deployment because the Studionet RPC became unavailable.
+The hardest risk is substantive validator equivalence under changing external evidence and model variance. Each run retrieves each registered web record once per node, derives typed findings, and compares all decision-critical fields. Missing or ambiguous evidence fails closed. Public fixtures provide repeatable live evidence. All thirteen required cases have now been verified on the canonical deployment, including live rendered evidence, ambiguity, duplicate replay, corrections, and fail-closed external failure. See `docs/LIVE_EVIDENCE.md` for the machine-verifiable records.
 
 ## Standalone Intelligent Contract rationale
 

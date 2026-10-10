@@ -16,4 +16,4 @@
 
 ## Known limitations before submission
 
-Real Studionet consensus, live web evidence verification, remote source parity, canonical deployment and Explorer evidence remain unverified. Direct Mode proves only deterministic contract behavior with mocked nondeterminism. Order amendments and consumption reversals are not implemented.
+Direct Mode proves deterministic behavior with mocked nondeterminism; the separate canonical Studionet matrix records live validator consensus and rendered evidence. Deployment finality, source parity and Explorer status are recorded in `DEPLOYMENT.md`. V1 does not amend orders or reverse finalized consumption. Ambiguous split allocation is rejected rather than guessed. Structured fixture content is still writer-supplied; only registered rendered URLs are fetched independently.

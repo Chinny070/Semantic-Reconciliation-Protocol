@@ -1,52 +1,38 @@
-# Release candidate verification record
+# Release candidate verification
 
-Date: 2026-10-09. Status: **NOT FROZEN**.
+Verification date: 2026-10-10. The candidate is deployed on Studionet at `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56` (chain ID `61999`). The full 13-scenario live matrix is verified; final GitHub push, clean-clone validation, and clean-worktree checks remain before freeze.
 
-## Local gates verified
+## Local validation
 
-- Python 3.12.10; `genlayer-py` 0.16.3; `genlayer-test` 0.29.2; `genvm-linter` 0.11.0.
-- Direct Mode: 42 passed.
+- Direct Mode: 52 tests passed, with pickling enabled.
 - GenVM AST lint: 3 checks passed.
-- Contract schema validation: 12 methods (7 views, 5 writes).
-- Supplemental typecheck: no errors.
-- Fixture/protocol preflight: passed.
-- Integration suite collection: seven Studionet scenarios collected.
+- Contract schema: 14 methods (9 views and 5 writes).
+- Supplemental typecheck and protocol preflight passed.
+- Integration test collection: 13 scenarios.
 
-## GitHub
+## Git and deployment
 
-- Repository: https://github.com/Chinny070/Semantic-Reconciliation-Protocol
-- Branch: `main`.
-- Latest source commit at deployment: `26b55af617c2a2844b44001fa49c4ea485596238`.
-- Local `HEAD` and `origin/main` both resolve to that commit.
-- Contract source was retrieved from the deployed address and compared byte-for-byte after line-ending normalization. Both normalized source SHA-256 values are `da277dea8a0db7f7cd94f5d6c592835ef06095aff7673de9ff2563ff0114f3ff`.
+- Repository: `https://github.com/Chinny070/Semantic-Reconciliation-Protocol`; GitHub reports `PUBLIC`, default branch `main`.
+- Deployed contract source commit: `3c507a8eb875d8988ce8c14962eafd003fb2e195`.
+- Deployment transaction: `0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc`.
+- Contract address: `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56`.
+- Deployment receipt: `FINALIZED`, `MAJORITY_AGREE`; five validators committed/revealed, three agreed and two were idle.
+- Explorer proof: [deployment transaction](https://explorer-studio.genlayer.com/tx/0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc) showed `FINALIZED`, `Deploy`, `Accepted`, and the contract in `To`.
+- On-chain schema: 14 methods (9 views and 5 writes).
+- Source parity: retrieved deployed source matched after newline normalization; both SHA-256 values are `d37eac79db186ab0c7eecd51ae0f86cb6f3ebf4570945f2c54b5a94e1fdd7460`.
 
-## Latest deployment observed
+## Live scenarios
 
-- Network: Studionet, chain ID `61999`, RPC `https://studio.genlayer.com/api`.
-- Address: `0xAa78272Caf6EAf7e523E78768319fBc2a65eF795`.
-- Deployment transaction: `0x024a2bf6243324b76de4b7a1234a2a428402341f19ac625c9c28d6c6614b0821`.
-- Receipt queried at `FINALIZED`: confirmed; result `MAJORITY_AGREE` with five validator votes.
-- On-chain schema retrieved: 12 methods.
-- Exact source parity: **verified** as above. Explorer proof: **not verified**.
+All thirteen scenario records have verified expectations, finalized receipts, and `MAJORITY_AGREE` results on the same canonical address. Transaction IDs, certificates, before/after ledgers, and evidence sources are in the machine-readable evidence artifact. A record audit confirmed every expected outcome, address, final status, and consensus result.
 
-## Live scenario evidence and limits
+The full set includes rendered-evidence semantic match, exact item, packaging equivalence, partial fulfillment, allowed equivalent substitution, unauthorized substitution, inferior substitution, ambiguous substitution, disguised duplicate replay, quantity shortfall, deterministic price obligation failure, invoice correction successor, and external evidence unavailable. The two batches that completed the matrix each exited successfully; all 13 expected/observed comparisons passed.
 
-A complete integration run was attempted against this exact address. Four scenarios passed and wrote independently checked certificates: rendered-evidence semantic reconciliation, packaging/unit equivalence, partial fulfillment, and permitted equivalent substitution. Every transaction in those four cases was `FINALIZED` with `MAJORITY_AGREE`. The certificates reported, respectively: `R3 MATCHED`/10 consumed; `R4 MATCHED`/24 base units consumed with `PACKAGING_EQUIVALENT`; `R5 PARTIAL_MATCH`/4 consumed; and `R6 MATCHED`/10 consumed with `ALLOWED_EQUIVALENT`.
+## Adversarial and scope audit
 
-The unauthorized-substitution case also finalized, with three disagreeing votes and two idle validators (receipt result `MAJORITY_DISAGREE`). The leader output and stored certificate show `ALLOWED_SUPERIOR`, zero consumed, `INCONCLUSIVE`, and `UNAUTHORIZED_SUBSTITUTION` under an `EXACT_REQUIRED` order. This is fail-closed, but validator equivalence did not agree, so the scenario is not counted green. The disguised duplicate case started but later RPC receipt polling timed out; its isolated run had previously passed on this deployment with seven finalized `MAJORITY_AGREE` transactions and `DUPLICATE_BILLING_ATTEMPT`, zero consumed. The external-route failure case did not start: schema retrieval failed because the Studionet RPC was unavailable. Preserve these as incomplete, not latest-suite passes.
+Direct Mode exercises forged well-formed and malformed leader proposals, invented or omitted IDs, unsupported enums, conflicting semantic outputs, error wrappers, and fail-closed substitution behavior. GenLayer output controls semantic classification only; deterministic contract code controls ratios, quantities, prices, obligations, IDs, duplicate use, and state transitions.
 
-## Required before freeze
+Correction behavior is bounded in v1: orders are sealed and immutable; delivery and invoice successors are supported; finalized consumption cannot be reversed. A correction requiring order amendment or reversal is unsupported. Structured fixture records are submitter-provided; the live rendered-evidence test retrieves public raw GitHub fixtures. No exhaustive patent, owner-portfolio, or ecosystem-wide novelty search is claimed.
 
-1. Restore Studionet access; rerun unauthorized substitution until validators agree on a typed fail-closed finding or identify/fix validator inconsistency. Rerun duplicate and external-route failure gates against this address.
-2. Verify a public Explorer page/transaction trail. A direct open of the CLI-reported Explorer URL at this address was inaccessible through the available browser lookup, so Explorer proof remains unverified.
-3. Complete typed deterministic enforcement for commercial threshold obligations, plus order correction/reversal and required challenge/forged-leader live audits where applicable.
-4. Complete a clean-clone run at `26b55af` and rejection-oriented steward audit; update this record only from observed results.
+## Release status
 
-## Evidence identifiers
-
-- Deployment receipt: `0x024a2bf6243324b76de4b7a1234a2a428402341f19ac625c9c28d6c6614b0821`.
-- Unauthorized-substitution disagreement receipt: `0x074dff0f3347ac148be92f7665672439a7a34961365bcc2b8576a43a9aaf2a2c`.
-- External-route failure test retry: could not retrieve contract schema (`gltest` reported failure across default, hosted Studio, and local clients); no scenario transaction was submitted.
-- Current-address successful scenario transactions and certificate details: [live evidence ledger](LIVE_EVIDENCE.md).
-
-Do not call this candidate green, finalized for submission, or frozen until those gates are verified.
+Live matrix, deployment, source parity, and local validation are verified. Freeze only after committing and pushing the final documentation/evidence, running the documented checks from a fresh clone of the pushed HEAD, and confirming the original worktree is clean. No external submission form has been submitted.

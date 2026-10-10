@@ -46,7 +46,7 @@ Direct Mode mocks only nondeterminism; it is not proof of real validator consens
 
 ## Release status
 
-The current candidate remains **not frozen or submission-ready** until the latest source's full live scenario matrix, source parity, Explorer check, and steward rejection audit are verified. V1 intentionally excludes order amendments and consumption reversals; those are scope limits, not implied features. See [deployment](docs/DEPLOYMENT.md), [correction lineage](docs/CORRECTIONS.md), and [release verification](docs/RELEASE_CANDIDATE_VERIFICATION.md).
+The canonical Studionet deployment, deployed-source parity, and all thirteen live scenarios are verified. The remaining freeze gates are the pushed evidence/docs commit, clean-clone reproducibility, and clean working tree. See [live evidence](docs/LIVE_EVIDENCE.md) and [release verification](docs/RELEASE_CANDIDATE_VERIFICATION.md). V1 intentionally excludes order amendments and consumption reversals; those are scope limits, not implied features. See [deployment](docs/DEPLOYMENT.md) and [correction lineage](docs/CORRECTIONS.md).
 
 ## Reusable consumers
 
