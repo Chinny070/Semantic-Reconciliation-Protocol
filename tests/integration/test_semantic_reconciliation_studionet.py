@@ -1,13 +1,15 @@
 """Canonical Studionet consensus scenarios; writes permanent testnet evidence."""
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 
 import pytest
+import requests
 from gltest import get_contract_factory
+from gltest.clients import get_gl_client
 from gltest.assertions import tx_execution_failed, tx_execution_succeeded
-from gltest.types import TransactionStatus
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -97,11 +99,7 @@ def _record(kind, record_id, order_id, quantity=10, unit="each", description="Po
 
 
 def _submit(contract, method_name, arguments, account, should_succeed=True):
-    receipt = getattr(contract, method_name)(args=arguments).transact(
-        wait_transaction_status=TransactionStatus.FINALIZED,
-        wait_interval=60000,
-        wait_retries=100,
-    )
+    receipt = _write_and_wait(contract, method_name, arguments, account)
     assert receipt.get("status_name") == "FINALIZED", (method_name, receipt.get("status_name"), receipt.get("tx_id"))
     if should_succeed:
         assert receipt.get("result_name") == "MAJORITY_AGREE", (
@@ -116,13 +114,40 @@ def _submit(contract, method_name, arguments, account, should_succeed=True):
     return receipt
 
 
-def _submit_semantic_fail_closed(contract, delivery_id, invoice_id):
-    """Allow a safe semantic no-majority result in negative live scenarios."""
-    receipt = contract.reconcile(args=[delivery_id, invoice_id]).transact(
-        wait_transaction_status=TransactionStatus.FINALIZED,
-        wait_interval=60000,
-        wait_retries=100,
+def _write_and_wait(contract, method_name, arguments, account):
+    """Submit once, then retry only public receipt reads after transient RPC errors."""
+    client = get_gl_client()
+    tx_hash = client.write_contract(
+        address=contract.address,
+        function_name=method_name,
+        account=account,
+        value=0,
+        leader_only=False,
+        args=arguments,
     )
+    last_status = None
+    for attempt in range(100):
+        try:
+            receipt = client.get_transaction(tx_hash)
+        except requests.exceptions.RequestException:
+            if attempt == 99:
+                raise
+            time.sleep(5)
+            continue
+        if receipt is not None:
+            last_status = receipt.get("status_name")
+            if last_status == "FINALIZED":
+                return receipt
+        if attempt < 99:
+            time.sleep(60)
+    raise AssertionError(
+        "transaction did not finalize: " + str(tx_hash) + "; last status=" + str(last_status)
+    )
+
+
+def _submit_semantic_fail_closed(contract, delivery_id, invoice_id, account):
+    """Allow a safe semantic no-majority result in negative live scenarios."""
+    receipt = _write_and_wait(contract, "reconcile", [delivery_id, invoice_id], account)
     assert receipt.get("status_name") == "FINALIZED", (
         "reconcile", receipt.get("status_name"), receipt.get("tx_id")
     )
@@ -373,12 +398,12 @@ def test_live_inferior_substitution_rejected(live_contract):
     txs = _publish(contract, account, order, delivery, invoice)
     before = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
     txs.append(_submit_semantic_fail_closed(
-        contract, delivery["record_id"], invoice["record_id"]
+        contract, delivery["record_id"], invoice["record_id"], account
     ))
     after = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
     assert before == after, (before, after)
     if txs[-1].get("result_name") in ("MAJORITY_DISAGREE", "NO_MAJORITY"):
-        assert contract.get_latest_reconciliation_for_order(args=[order_id]).call() == ""
+        assert contract.get_latest_reconciliation_for_order(args=[order_id]).call() in ("", None)
         _record_no_consensus_fail_closed(contract, "inferior_substitution_rejected",
                                          txs, order_id, before, after, None)
         return
@@ -428,7 +453,7 @@ def test_live_disguised_duplicate_invoice_blocked(live_contract):
     txs.extend([
         _submit(contract, "register_delivery", [json.dumps(delivery2, separators=(",", ":"))], account),
         _submit(contract, "register_invoice", [json.dumps(invoice2, separators=(",", ":"))], account),
-        _submit_semantic_fail_closed(contract, delivery2["record_id"], invoice2["record_id"]),
+        _submit_semantic_fail_closed(contract, delivery2["record_id"], invoice2["record_id"], account),
     ])
     if txs[-1].get("result_name") in ("MAJORITY_DISAGREE", "NO_MAJORITY"):
         after = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
