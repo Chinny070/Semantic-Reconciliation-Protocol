@@ -1,0 +1,11 @@
+{
+  "network": "studionet",
+  "rpc": "https://studio.genlayer.com/api",
+  "contract_address": "0x6cf5c63E9f5CddC9a113776Ea91b891907a90Fa7",
+  "deployment_transaction": "0x7a1abe0448c2801bf4f05f32d230410e5e2c59b2becffbe4a9e2f2c75fc549be",
+  "source_commit": "948156b",
+  "source_sha256_normalized": "fc2c35d9b4c158ada8735106fbb00362c5a4a6bf6ac21c8af62d173d2bf3573b",
+  "scenario_count": 15,
+  "scenario_artifact": "studionet_live_evidence.json",
+  "verification": "Each scenario record was produced by the nonce-safe live harness and contains finalized receipt statuses, consensus results, transaction ids, certificate/readback state, and expectation_met=true."
+}

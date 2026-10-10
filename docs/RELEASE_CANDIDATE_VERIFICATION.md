@@ -1,31 +1,31 @@
 # Release candidate verification
 
-Verification date: 2026-10-10. The candidate is deployed on Studionet at `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56` (chain ID `61999`). The complete live matrix, validator receipts, source parity, pushed HEAD, fresh-clone validation, and clean worktree gates passed. The candidate is frozen.
+Verification date: 2026-10-10. The candidate is deployed on Studionet at `0x6cf5c63E9f5CddC9a113776Ea91b891907a90Fa7` (chain ID `61999`). The complete live matrix, source parity, pushed HEAD, and fresh-clone local gates passed.
 
 ## Local validation
 
-- Direct Mode: 52 tests passed, with pickling enabled.
+- Direct Mode: 74 tests passed, with pickling enabled.
 - GenVM AST lint: 3 checks passed.
-- Contract schema: 14 methods (9 views and 5 writes).
+- Contract schema: 16 methods (10 views and 6 writes).
 - Supplemental typecheck and protocol preflight passed.
-- Integration test collection: 13 scenarios.
+- Integration test collection: 15 scenarios.
 
 ## Git and deployment
 
 - Repository: `https://github.com/Chinny070/Semantic-Reconciliation-Protocol`; GitHub reports `PUBLIC`, default branch `main`.
-- Deployed contract source commit: `3c507a8eb875d8988ce8c14962eafd003fb2e195`.
-- Deployment transaction: `0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc`.
-- Contract address: `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56`.
+- Deployed contract source commit: `948156b`.
+- Deployment transaction: `0x7a1abe0448c2801bf4f05f32d230410e5e2c59b2becffbe4a9e2f2c75fc549be`.
+- Contract address: `0x6cf5c63E9f5CddC9a113776Ea91b891907a90Fa7`.
 - Deployment receipt: `FINALIZED`, `MAJORITY_AGREE`; five validators committed/revealed, three agreed and two were idle.
-- Explorer proof: [deployment transaction](https://explorer-studio.genlayer.com/tx/0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc) showed `FINALIZED`, `Deploy`, `Accepted`, and the contract in `To`.
-- On-chain schema: 14 methods (9 views and 5 writes).
-- Source parity: retrieved deployed source matched after newline normalization; both SHA-256 values are `d37eac79db186ab0c7eecd51ae0f86cb6f3ebf4570945f2c54b5a94e1fdd7460`.
+- Explorer proof: [deployment transaction](https://explorer-studio.genlayer.com/tx/0x7a1abe0448c2801bf4f05f32d230410e5e2c59b2becffbe4a9e2f2c75fc549be) finalized with `MAJORITY_AGREE`.
+- On-chain schema: 16 methods (10 views and 6 writes).
+- Source parity: retrieved deployed source matched after newline normalization; both SHA-256 values are `fc2c35d9b4c158ada8735106fbb00362c5a4a6bf6ac21c8af62d173d2bf3573b`.
 
 ## Live scenarios
 
-All thirteen scenario records have verified expectations, finalized receipts, and `MAJORITY_AGREE` results on the same canonical address. I independently fetched all 57 unique receipts from Studionet RPC. Every receipt is finalized, has five validator vote entries, and reports majority agreement; per-validator votes, counts, and rounds are preserved in the machine-readable evidence. Transaction IDs, certificates, before/after ledgers, and evidence sources are included. A record audit confirmed every expected outcome, address, final status, and consensus result.
+All fifteen scenario records have verified expectations and finalized/readback evidence on the same canonical address. Transaction IDs, certificates, before/after ledgers, and evidence sources are included. A record audit confirmed every expected outcome and address.
 
-The full set includes rendered-evidence semantic match, exact item, packaging equivalence, partial fulfillment, allowed equivalent substitution, unauthorized substitution, inferior substitution, ambiguous substitution, disguised duplicate replay, quantity shortfall, deterministic price obligation failure, invoice correction successor, and external evidence unavailable. The two batches that completed the matrix each exited successfully; all 13 expected/observed comparisons passed.
+The full set includes rendered-evidence semantic match, exact item, packaging equivalence, partial fulfillment, allowed equivalent substitution, unauthorized substitution, inferior substitution, ambiguous substitution, disguised duplicate replay, quantity shortfall, deterministic price obligation failure, invoice correction successor, external evidence unavailable, multiline unmatched order handling, and sustained challenge reversal. All 15 expected/observed comparisons passed.
 
 ## Adversarial and scope audit
 

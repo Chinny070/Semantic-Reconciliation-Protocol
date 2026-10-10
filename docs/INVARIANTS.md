@@ -14,6 +14,6 @@
 | SR10 | External failure is not a semantic negative finding. | Agreed unavailable evidence is certified as `EVIDENCE_UNAVAILABLE`; disagreements fail without ledger mutation. | Direct failure tests and live negative external-route scenario |
 | SR11 | Match graph is bounded. | At most 12 lines per record and 144 edges. | schema/oversize tests |
 | SR12 | Unit arithmetic is exact. | Bounded integer numerator/denominator; reject nonintegral units. | packaging test |
-| SR13 | Challenges are bounded and cannot rewrite an accepted receipt. | Up to three evidence-backed findings per receipt; evidence hashes cannot replay; challenge records are separate from receipts and quantity state. | challenge immutability test |
+| SR13 | Challenge consequences are bounded and replay safe. | One challenge per participant during a provisional window; evidence hashes cannot replay; sustained support releases only the receipt's provisional quantities after order and source-ledger checks; finalized receipts are protected. | challenge reversal, finalization, replay tests |
 | SR14 | Certificate binds deterministic state. | Hashes for order/policy, records, consumption, proposal and certificate. | Certificate assertion |
 | SR15 | Protocol uncertainty is distinct from app state. | Failed nondeterminism reverts; no receipt is written. | external failure test |

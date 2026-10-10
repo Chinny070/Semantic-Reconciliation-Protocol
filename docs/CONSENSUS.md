@@ -8,7 +8,7 @@
 
 The leader loads frozen order/policy and record evidence, retrieves each web source once, then asks for IDs and typed semantic classes only. It explicitly frames all records/evidence as one JSON-escaped untrusted data object and tells the classifier to ignore embedded instructions. It prohibits quantity, ratio, price and balance derivation.
 
-The validator validates the leader schema, independently performs the same retrieval and semantic classification, then compares evidence sufficiency, obligation findings, and the full set of edge IDs/relation/substitution/duplicate classes. It rejects malformed/exceptional leaders and any mismatch. Direct Mode skips real validator consensus; only a live Studionet run can prove this path.
+The validator validates the leader schema, independently performs the same retrieval and semantic classification, then compares evidence sufficiency, obligation findings, edge IDs/relation/substitution/duplicate classes, unmatched graph nodes, and the complete observed evidence identities (retrieval kind, source, bounded-content digest, provenance class). It rejects malformed/exceptional leaders and any mismatch. Direct Mode skips real validator consensus; only a live Studionet run can prove this path.
 
 ## Failure and equivalence
 

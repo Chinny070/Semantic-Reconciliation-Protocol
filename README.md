@@ -18,25 +18,25 @@ portable reconciliation certificate
 
 ## What is implemented
 
-- **Semantic Line-Item Graph:** bounded order/delivery/invoice edges with typed relation and substitution classes.
+- **Semantic Line-Item Graph:** bounded order/delivery/invoice edges with typed relation and substitution classes, plus explicit unmatched nodes for undelivered orders, unbilled deliveries, unsupported invoices, unrelated lines, and ambiguity. No source ID is fabricated.
 - **Commercial Obligation Graph:** bounded typed obligations include deterministic delivery deadlines, unit-price ceilings, maximum freight totals, and permitted charge classes, plus semantic location, certificate, serial, inspection, and service-milestone findings. Deterministic values are checked in contract code; the model does not calculate or decide numeric limits.
 - **Quantity–Semantics Separation:** bounded unit conversions are frozen in the order; record submitters cannot supply ratios, and multiplication/divisibility/consumption happen in deterministic code.
 - **Substitution Policy Engine:** policy is frozen in the order and constrains the accepted semantic substitution class.
 - **Partial fulfillment:** consumption records remaining order capacity across receipts.
 - **Duplicate prevention:** invoice-number/content identity and semantic prior-charge findings block reuse; per-source remaining quantities permit valid partial consumption without double use.
-- **Correction lineage:** immutable delivery and invoice successors preserve readable historical records and supersede predecessors for future reconciliation. Orders are immutable in v1, and finalized quantity consumption is not reversible; corrections that require either capability need a future protocol version.
+- **Correction lineage:** immutable delivery and invoice successors preserve readable historical records and supersede predecessors for future reconciliation. Successors are registrar-bound and invoice identity is order-scoped.
 - **Evidence failure:** when validators agree that a required external source is unavailable, the contract stores an `EVIDENCE_UNAVAILABLE` certificate with no semantic edges and no consumption. A source disagreement fails without state advance and is not treated as fraud or a mismatch.
-- **Evidence-backed challenges:** up to three new-evidence findings can challenge a receipt edge; a challenge cannot rewrite the receipt or quantity ledger.
+- **Evidence-backed challenges:** each participant has one bounded challenge during a provisional receipt's challenge window. A sustained challenge voids provisional consumption with invariant checks; finalized receipts cannot be challenged. The original certificate remains auditable.
 - **Portable certificate:** stored JSON view binds order, policy, record/evidence roots, semantic edges, deterministic consumption, quantity digests, exceptions, and consensus output.
-- **Bounded state:** at most 64 orders, 64 deliveries, 64 invoices and 64 receipts; record lines and evidence sizes are also bounded.
+- **Bounded state:** records and receipts are capped per order, and orders are capped per creator, so one participant cannot consume another order's lifetime capacity. Record lines, evidence, prior-charge context, and graph size are bounded.
 
 ## Run local checks
 
-Use Python 3.12 and the pinned packages in `requirements-test.txt`.
+Use Python 3.12 and the exact packages in `requirements-lock.txt`.
 
 ```powershell
-$env:PYTHONIOENCODING='utf-8'
-gltest tests/direct -v -s
+$env:PYTHONUTF8='1'
+python -m pytest tests/direct -q
 genvm-lint check contracts/semantic_reconciliation.py --json
 genvm-lint typecheck contracts/semantic_reconciliation.py
 python scripts/preflight.py
@@ -46,7 +46,7 @@ Direct Mode mocks only nondeterminism; it is not proof of real validator consens
 
 ## Release status
 
-The canonical Studionet deployment, deployed-source parity, all thirteen live scenarios, and validator votes for all 57 transactions are verified. The evidence/docs commit is pushed, a fresh clone of pushed `main` passed the local and on-chain schema gates, and the working tree is clean. The candidate is frozen. See [live evidence](docs/LIVE_EVIDENCE.md) and [release verification](docs/RELEASE_CANDIDATE_VERIFICATION.md). V1 intentionally excludes order amendments and consumption reversals; those are scope limits, not implied features. See [deployment](docs/DEPLOYMENT.md) and [correction lineage](docs/CORRECTIONS.md).
+The current release evidence is recorded only after the corrected deployment and live matrix are independently verified. See [live evidence](docs/LIVE_EVIDENCE.md), [deployment](docs/DEPLOYMENT.md), and [release verification](docs/RELEASE_CANDIDATE_VERIFICATION.md). The protocol does not move money or assert issuer authenticity or bilateral commercial acceptance.
 
 ## Reusable consumers
 

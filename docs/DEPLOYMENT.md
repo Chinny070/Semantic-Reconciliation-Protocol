@@ -1,19 +1,17 @@
 # Deployment
 
-## Canonical Studionet deployment
+## Corrected Studionet candidate
 
 - Network: GenLayer Studionet, chain ID `61999`; RPC `https://studio.genlayer.com/api`.
-- Source commit: `3c507a8eb875d8988ce8c14962eafd003fb2e195`.
-- Deployment transaction: [`0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc`](https://explorer-studio.genlayer.com/tx/0xae1dffc9d421d832872762c7c453c2bb3fa4975ce4a5e164cca8ea14b9d01abc).
-- Contract: [`0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56`](https://explorer-studio.genlayer.com/address/0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56).
-- Receipt: `FINALIZED`; GenLayer result `MAJORITY_AGREE`; five validators committed/revealed (three agree, two idle).
-- Explorer transaction page independently shows `FINALIZED`, type `Deploy`, consensus `Accepted`, and the same contract in the linked `To` field. Explorer displayed the contract bytecode input. The linked address route was exposed by the page; its separate detail view did not finish rendering during verification.
-- On-chain schema: 14 methods (9 views and 5 writes).
-- Deployed source parity: retrieved source equals local `contracts/semantic_reconciliation.py` after newline normalization. Both SHA-256 values: `d37eac79db186ab0c7eecd51ae0f86cb6f3ebf4570945f2c54b5a94e1fdd7460`.
-- Contract Git blob for the deployed source commit: `9006c908def47a47137ce952ba6a37d8b4bb371b`.
+- Source commit deployed: `948156b` (`Harden reconciliation lifecycle and multiline graph`).
+- Deployment transaction: [`0x7a1abe0448c2801bf4f05f32d230410e5e2c59b2becffbe4a9e2f2c75fc549be`](https://explorer-studio.genlayer.com/tx/0x7a1abe0448c2801bf4f05f32d230410e5e2c59b2becffbe4a9e2f2c75fc549be).
+- Contract: [`0x6cf5c63E9f5CddC9a113776Ea91b891907a90Fa7`](https://explorer-studio.genlayer.com/address/0x6cf5c63E9f5CddC9a113776Ea91b891907a90Fa7).
+- Deployment receipt: `FINALIZED`, `MAJORITY_AGREE`, five revealed validator slots.
+- Retrieved deployed source and local source have normalized SHA-256 `fc2c35d9b4c158ada8735106fbb00362c5a4a6bf6ac21c8af62d173d2bf3573b` and equal normalized content.
+- The corrected source exposes 16 methods: 10 views and 6 writes, including reconciliation state and finalization.
 
-The source has not changed since deployment. Later release documentation and live-evidence commits do not change the deployed contract blob. Older deployment addresses in Git history are historical and are not substitutes for this canonical address.
+The deployment address above is the only address for this release. Earlier addresses and evidence files are historical and must not be used to represent the corrected contract.
 
-## Release status
+## Verification status
 
-All thirteen required live scenarios have verified expected outcomes. All 57 unique write receipts were read from Studionet RPC; each finalized with `MAJORITY_AGREE`, and five validator votes per receipt are preserved in the evidence artifact. The release commit is pushed, a fresh clone passed local and deployed-schema checks, and the worktree is clean. The candidate is frozen. See [live evidence ledger](LIVE_EVIDENCE.md) and [steward rejection audit](STEWARD_REJECTION_AUDIT.md) for the evidence and bounded v1 limitations.
+The local release gates are green from a clean checkout at `948156b`: pinned dependency parity, Direct Mode, GenVM lint, typecheck, protocol preflight, and mutation checks. The live scenario ledger is updated only from finalized receipts against the address above. See [live evidence](LIVE_EVIDENCE.md) and [release verification](RELEASE_CANDIDATE_VERIFICATION.md).

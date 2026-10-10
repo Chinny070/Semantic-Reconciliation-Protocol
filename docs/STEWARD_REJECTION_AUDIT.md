@@ -1,6 +1,6 @@
 # Cold and rejection-oriented steward audit
 
-Audit target: source commit `3c507a8eb875d8988ce8c14962eafd003fb2e195`, deployed to Studionet at `0xEdcdC09588C71aDD0B10396A07Bb022a4a3b3D56`. This is an internal adversarial review and does not claim an external steward's approval.
+Audit target: source commit `948156b`, deployed to Studionet at `0x6cf5c63E9f5CddC9a113776Ea91b891907a90Fa7`. This is an internal adversarial review and does not claim an external steward's approval.
 
 | Gate | Finding | Evidence and remaining boundary |
 |---|---|---|
@@ -13,10 +13,10 @@ Audit target: source commit `3c507a8eb875d8988ce8c14962eafd003fb2e195`, deployed
 | Duplicate ledger | PASS in verified live scope | Live disguised replay first consumed 10 then consumed zero on replay, records duplicate attempt/count, and leaves the second quantity ledger unchanged. |
 | Corrections and recovery | PASS for declared v1 lifecycle | Delivery/invoice successors preserve lineage and supersede predecessors. Live invoice successor case passed. V1 does not reverse finalized consumption or amend orders. |
 | Evidence retrieval/failure | PASS with bounded source model | Live HTTPS raw-GitHub evidence retrieval/rendering succeeded. Agreed source unavailability produced `EVIDENCE_UNAVAILABLE`, no edges, zero consumption, and no fraud accusation. Structured fixture content is submitter-provided. |
-| Certificate, state, and validator evidence | PASS | Versioned portable certificates and quantity views were checked for all 13 scenarios. All 57 unique transaction receipts were independently fetched from RPC; each finalized with `MAJORITY_AGREE`, and its five validator votes are retained in the evidence artifact. |
-| Runtime, schema and source parity | PASS | 52 Direct tests, GenVM lint, typecheck, 14-method schema validation, preflight, and deployed-source normalized hash were verified. Deployment finalized with `MAJORITY_AGREE`; Explorer showed finality and accepted deployment. |
+| Certificate, state, and validator evidence | PASS | Versioned portable certificates and quantity/state views were checked for all 15 scenarios. The evidence artifact retains the live transaction and readback records for the canonical address. |
+| Runtime, schema and source parity | PASS | 74 Direct tests, GenVM lint, typecheck, 16-method schema validation, preflight, mutation checks, and deployed-source normalized hash were verified. Deployment finalized with `MAJORITY_AGREE`. |
 | Novelty / collision | Defensible; not exhaustive | Decision record compares owner primitives and adjacent categories. No exhaustive portfolio, patent, or ecosystem-wide search is claimed. |
-| Live matrix and release reproducibility | PASS | All 13 live scenarios and all 57 unique validator receipts were verified. Final evidence/docs are pushed, a fresh clone passed all local gates plus on-chain schema retrieval, and the original worktree is clean. |
+| Live matrix and release reproducibility | PASS | All 15 live scenarios were verified. Final evidence/docs are prepared for push, and a fresh clone passed the local gates plus on-chain schema retrieval. |
 
 ## Decision
 

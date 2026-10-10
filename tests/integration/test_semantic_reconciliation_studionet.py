@@ -11,6 +11,10 @@ from gltest import get_contract_factory
 from gltest.clients import get_gl_client
 from gltest.assertions import tx_execution_failed, tx_execution_succeeded
 from genlayer_py.exceptions import GenLayerError
+from genlayer_py.abi import calldata
+from genlayer_py.abi.transactions import serialize
+from genlayer_py.contracts.utils import make_calldata_object
+from genlayer_py.contracts.actions import _encode_add_transaction_data, _prepare_transaction
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -116,16 +120,41 @@ def _submit(contract, method_name, arguments, account, should_succeed=True):
 
 
 def _write_and_wait(contract, method_name, arguments, account):
-    """Submit once, then retry only public receipt reads after transient RPC errors."""
+    """Submit one signed transaction, retrying the identical raw bytes only if the
+    gateway drops the response. This cannot create a second nonce or alter args."""
     client = get_gl_client()
-    tx_hash = client.write_contract(
-        address=contract.address,
-        function_name=method_name,
-        account=account,
-        value=0,
-        leader_only=False,
-        args=arguments,
+    client.initialize_consensus_smart_contract()
+    serialized_data = serialize([
+        calldata.encode(make_calldata_object(method=method_name, args=arguments, kwargs=None)),
+        False,
+    ])
+    encoded_data = _encode_add_transaction_data(
+        self=client,
+        sender_account=account,
+        recipient=contract.address,
+        consensus_max_rotations=client.chain.default_consensus_max_rotations,
+        data=serialized_data,
     )
+    transaction = _prepare_transaction(
+        self=client,
+        sender=account.address,
+        recipient=client.chain.consensus_main_contract["address"],
+        data=encoded_data,
+        value=0,
+    )
+    raw_transaction = client.w3.to_hex(account.sign_transaction(transaction).raw_transaction)
+    tx_hash = None
+    for attempt in range(8):
+        try:
+            tx_hash = client.provider.make_request(
+                method="eth_sendRawTransaction", params=[raw_transaction]
+            )["result"]
+            break
+        except (requests.exceptions.RequestException, GenLayerError):
+            if attempt == 7:
+                raise
+            time.sleep(5)
+    assert tx_hash is not None
     last_status = None
     for attempt in range(100):
         try:
