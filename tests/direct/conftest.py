@@ -56,9 +56,21 @@ def proposal(relation="ALLOWED_EQUIVALENT", substitution="ALLOWED_EQUIVALENT", d
     return {
         "edges": [{"order_line_id": "O1", "delivery_line_id": "D1", "invoice_line_id": "I1",
                    "relation": relation, "substitution": substitution, "duplicate_class": duplicate}],
-        "obligations": {}, "evidence_sufficient": sufficient,
+        "unmatched": [], "obligations": {}, "evidence_sufficient": sufficient,
+        "evidence_identities": {
+            "delivery": {"retrieval_kind": "STRUCTURED_FIXTURE", "source": "fixture:D-1", "content_digest": "0" * 64, "provenance_class": "PARTICIPANT_SUPPLIED"},
+            "invoice": {"retrieval_kind": "STRUCTURED_FIXTURE", "source": "fixture:I-1", "content_digest": "0" * 64, "provenance_class": "PARTICIPANT_SUPPLIED"},
+        },
     }
 
 
 def mock_matching(vm, value):
-    vm.mock_llm(r"You are an independent semantic commercial-record classifier", json.dumps(value))
+    model_value = dict(value)
+    model_value.pop("evidence_identities", None)
+    if "unmatched" not in model_value:
+        model_value["unmatched"] = [] if model_value.get("edges") else [
+            {"record_type": "ORDER", "line_id": "O1", "finding": "INSUFFICIENT_EVIDENCE"},
+            {"record_type": "DELIVERY", "line_id": "D1", "finding": "INSUFFICIENT_EVIDENCE"},
+            {"record_type": "INVOICE", "line_id": "I1", "finding": "INSUFFICIENT_EVIDENCE"},
+        ]
+    vm.mock_llm(r"You are an independent semantic commercial-record classifier", json.dumps(model_value))

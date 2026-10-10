@@ -6,9 +6,9 @@ MAX_OBLIGATIONS = 12
 MAX_RECORD_BYTES = 12000
 MAX_EVIDENCE_BYTES = 24000
 MAX_OUTPUT_BYTES = 12000
-MAX_HISTORY = 64
-MAX_DELIVERY_RECORDS = 64
-MAX_INVOICE_RECORDS = 64
+MAX_RECORDS_PER_ORDER = 64
+MAX_RECEIPTS_PER_ORDER = 64
+MAX_ORDERS_PER_CREATOR = 64
 MAX_RATIO = 1000000
 RELATIONS = (
     "EXACT_MATCH", "ALLOWED_EQUIVALENT", "PACKAGING_EQUIVALENT", "PARTIAL_MATCH",
@@ -223,7 +223,8 @@ def validate_record(raw, kind):
 
 
 def validate_proposal(proposal, order, delivery, invoice):
-    if not isinstance(proposal, dict) or set(proposal) != {"edges", "obligations", "evidence_sufficient"}:
+    expected_fields = {"edges", "unmatched", "obligations", "evidence_sufficient", "evidence_identities"}
+    if not isinstance(proposal, dict) or set(proposal) != expected_fields:
         raise ValueError("proposal schema invalid")
     if type(proposal["evidence_sufficient"]) is not bool:
         raise ValueError("evidence sufficiency must be bool")
@@ -259,6 +260,38 @@ def validate_proposal(proposal, order, delivery, invoice):
         seen.add(key)
         seen_delivery.add(edge["delivery_line_id"])
         seen_invoice.add(edge["invoice_line_id"])
+    if not isinstance(proposal["unmatched"], list) or len(proposal["unmatched"]) > MAX_LINES * 3:
+        raise ValueError("unmatched node list invalid")
+    unmatched = {"ORDER": set(), "DELIVERY": set(), "INVOICE": set()}
+    allowed_findings = {
+        "NOT_YET_DELIVERED_OR_INVOICED", "DELIVERY_WITHOUT_INVOICE",
+        "INVOICE_WITHOUT_DELIVERY", "UNRELATED", "AMBIGUOUS", "INSUFFICIENT_EVIDENCE",
+    }
+    for node in proposal["unmatched"]:
+        if (not isinstance(node, dict)
+                or set(node) != {"record_type", "line_id", "finding"}
+                or node["record_type"] not in unmatched
+                or node["finding"] not in allowed_findings):
+            raise ValueError("unmatched node schema invalid")
+        valid_ids = {"ORDER": order_ids, "DELIVERY": delivery_ids, "INVOICE": invoice_ids}[node["record_type"]]
+        if node["line_id"] not in valid_ids or node["line_id"] in unmatched[node["record_type"]]:
+            raise ValueError("unknown or duplicate unmatched line")
+        unmatched[node["record_type"]].add(node["line_id"])
+    identities = proposal["evidence_identities"]
+    if (not isinstance(identities, dict) or set(identities) != {"delivery", "invoice"}
+            or any(not isinstance(value, dict) for value in identities.values())):
+        raise ValueError("evidence identity schema invalid")
+    identity_fields = {"retrieval_kind", "source", "content_digest", "provenance_class"}
+    for value in identities.values():
+        if set(value) != identity_fields:
+            raise ValueError("evidence identity schema invalid")
+        _bounded_text(value["retrieval_kind"], "evidence retrieval kind", 32)
+        _bounded_text(value["source"], "evidence source", 512)
+        if (not isinstance(value["content_digest"], str) or len(value["content_digest"]) != 64
+                or any(ch not in "0123456789abcdef" for ch in value["content_digest"])):
+            raise ValueError("invalid observed evidence digest")
+        if value["provenance_class"] not in ("PARTICIPANT_SUPPLIED", "IMMUTABLE_REVISION", "MUTABLE_WEB"):
+            raise ValueError("invalid evidence provenance class")
     if not isinstance(proposal["obligations"], dict):
         raise ValueError("obligation findings invalid")
     expected = {x["obligation_id"] for x in order["obligations"] if x["evaluation_mode"] == "SEMANTIC"}
@@ -271,15 +304,18 @@ def validate_proposal(proposal, order, delivery, invoice):
             raise ValueError("insufficient evidence proposal cannot assert semantic edges")
         if any(value != "INSUFFICIENT_EVIDENCE" for value in proposal["obligations"].values()):
             raise ValueError("insufficient evidence proposal must fail semantic obligations closed")
-        return proposal
-    # Every supplied record line must be accounted for, including explicit
-    # unrelated/ambiguous findings; omission cannot silently erase a conflict.
-    if order_ids and not proposal["edges"]:
-        raise ValueError("proposal omitted all order-line findings")
-    if delivery_ids - {e["delivery_line_id"] for e in proposal["edges"]}:
+    # Every source line is represented exactly once: by a three-way edge or an
+    # explicit unmatched node. Order lines may appear in multiple edges because
+    # separate source lines can allocate independent capacity to the same order.
+    edge_order = {e["order_line_id"] for e in proposal["edges"]}
+    edge_delivery = {e["delivery_line_id"] for e in proposal["edges"]}
+    edge_invoice = {e["invoice_line_id"] for e in proposal["edges"]}
+    if edge_order & unmatched["ORDER"] or edge_delivery & unmatched["DELIVERY"] or edge_invoice & unmatched["INVOICE"]:
+        raise ValueError("line represented as both matched and unmatched")
+    if delivery_ids != edge_delivery | unmatched["DELIVERY"]:
         raise ValueError("proposal omitted delivery-line findings")
-    if invoice_ids - {e["invoice_line_id"] for e in proposal["edges"]}:
+    if invoice_ids != edge_invoice | unmatched["INVOICE"]:
         raise ValueError("proposal omitted invoice-line findings")
-    if order_ids - {e["order_line_id"] for e in proposal["edges"]}:
+    if order_ids != edge_order | unmatched["ORDER"]:
         raise ValueError("proposal omitted order-line findings")
     return proposal

@@ -46,7 +46,8 @@ def test_classifier_prompt_limits_edges_to_current_three_way_lines():
     assert "Every edge must include exactly one valid order_line_id" in code
     assert "delivery_line_id, and invoice_line_id " in code
     assert "Prior consumed lines are comparison context ONLY" in code
-    assert "Never emit a one-sided edge" in code
+    assert "Never fabricate a missing source ID" in code
+    assert "must occur either in an edge or once in unmatched" in code
     assert "registered_by identifies only the order participant" in code
     assert "WEB_RENDERED content is independently retrieved page content" in code
     assert "not proof that the page or document is issued by an authorized commercial source" in code

@@ -25,7 +25,9 @@ p_MAX_OBLIGATIONS = 12
 p_MAX_RECORD_BYTES = 12000
 p_MAX_EVIDENCE_BYTES = 24000
 p_MAX_OUTPUT_BYTES = 12000
-p_MAX_HISTORY = 64
+p_MAX_RECORDS_PER_ORDER = 64
+p_MAX_RECEIPTS_PER_ORDER = 64
+p_MAX_ORDERS_PER_CREATOR = 64
 p_MAX_PRIOR_CHARGES = 64
 p_MAX_DELIVERY_RECORDS = 64
 p_MAX_INVOICE_RECORDS = 64
@@ -243,7 +245,8 @@ def p_validate_record(raw, kind):
 
 
 def p_validate_proposal(proposal, order, delivery, invoice):
-    if not isinstance(proposal, dict) or set(proposal) != {"edges", "obligations", "evidence_sufficient"}:
+    expected_fields = {"edges", "unmatched", "obligations", "evidence_sufficient", "evidence_identities"}
+    if not isinstance(proposal, dict) or set(proposal) != expected_fields:
         raise ValueError("proposal schema invalid")
     if type(proposal["evidence_sufficient"]) is not bool:
         raise ValueError("evidence sufficiency must be bool")
@@ -279,6 +282,38 @@ def p_validate_proposal(proposal, order, delivery, invoice):
         seen.add(key)
         seen_delivery.add(edge["delivery_line_id"])
         seen_invoice.add(edge["invoice_line_id"])
+    if not isinstance(proposal["unmatched"], list) or len(proposal["unmatched"]) > p_MAX_LINES * 3:
+        raise ValueError("unmatched node list invalid")
+    unmatched = {"ORDER": set(), "DELIVERY": set(), "INVOICE": set()}
+    allowed_findings = {
+        "NOT_YET_DELIVERED_OR_INVOICED", "DELIVERY_WITHOUT_INVOICE",
+        "INVOICE_WITHOUT_DELIVERY", "UNRELATED", "AMBIGUOUS", "INSUFFICIENT_EVIDENCE",
+    }
+    for node in proposal["unmatched"]:
+        if (not isinstance(node, dict)
+                or set(node) != {"record_type", "line_id", "finding"}
+                or node["record_type"] not in unmatched
+                or node["finding"] not in allowed_findings):
+            raise ValueError("unmatched node schema invalid")
+        valid_ids = {"ORDER": order_ids, "DELIVERY": delivery_ids, "INVOICE": invoice_ids}[node["record_type"]]
+        if node["line_id"] not in valid_ids or node["line_id"] in unmatched[node["record_type"]]:
+            raise ValueError("unknown or duplicate unmatched line")
+        unmatched[node["record_type"]].add(node["line_id"])
+    identities = proposal["evidence_identities"]
+    if (not isinstance(identities, dict) or set(identities) != {"delivery", "invoice"}
+            or any(not isinstance(value, dict) for value in identities.values())):
+        raise ValueError("evidence identity schema invalid")
+    identity_fields = {"retrieval_kind", "source", "content_digest", "provenance_class"}
+    for value in identities.values():
+        if set(value) != identity_fields:
+            raise ValueError("evidence identity schema invalid")
+        p__bounded_text(value["retrieval_kind"], "evidence retrieval kind", 32)
+        p__bounded_text(value["source"], "evidence source", 512)
+        if (not isinstance(value["content_digest"], str) or len(value["content_digest"]) != 64
+                or any(ch not in "0123456789abcdef" for ch in value["content_digest"])):
+            raise ValueError("invalid observed evidence digest")
+        if value["provenance_class"] not in ("PARTICIPANT_SUPPLIED", "IMMUTABLE_REVISION", "MUTABLE_WEB"):
+            raise ValueError("invalid evidence provenance class")
     if not isinstance(proposal["obligations"], dict):
         raise ValueError("obligation findings invalid")
     expected = {x["obligation_id"] for x in order["obligations"] if x["evaluation_mode"] == "SEMANTIC"}
@@ -291,21 +326,23 @@ def p_validate_proposal(proposal, order, delivery, invoice):
             raise ValueError("insufficient evidence proposal cannot assert semantic edges")
         if any(value != "INSUFFICIENT_EVIDENCE" for value in proposal["obligations"].values()):
             raise ValueError("insufficient evidence proposal must fail semantic obligations closed")
-        return proposal
-    # Every supplied record line must be accounted for, including explicit
-    # unrelated/ambiguous findings; omission cannot silently erase a conflict.
-    if order_ids and not proposal["edges"]:
-        raise ValueError("proposal omitted all order-line findings")
-    if delivery_ids - {e["delivery_line_id"] for e in proposal["edges"]}:
+    edge_order = {e["order_line_id"] for e in proposal["edges"]}
+    edge_delivery = {e["delivery_line_id"] for e in proposal["edges"]}
+    edge_invoice = {e["invoice_line_id"] for e in proposal["edges"]}
+    if edge_order & unmatched["ORDER"] or edge_delivery & unmatched["DELIVERY"] or edge_invoice & unmatched["INVOICE"]:
+        raise ValueError("line represented as both matched and unmatched")
+    if delivery_ids != edge_delivery | unmatched["DELIVERY"]:
         raise ValueError("proposal omitted delivery-line findings")
-    if invoice_ids - {e["invoice_line_id"] for e in proposal["edges"]}:
+    if invoice_ids != edge_invoice | unmatched["INVOICE"]:
         raise ValueError("proposal omitted invoice-line findings")
-    if order_ids - {e["order_line_id"] for e in proposal["edges"]}:
+    if order_ids != edge_order | unmatched["ORDER"]:
         raise ValueError("proposal omitted order-line findings")
     return proposal
 
 
-MAX_HISTORY = p_MAX_HISTORY
+MAX_RECORDS_PER_ORDER = p_MAX_RECORDS_PER_ORDER
+MAX_RECEIPTS_PER_ORDER = p_MAX_RECEIPTS_PER_ORDER
+MAX_ORDERS_PER_CREATOR = p_MAX_ORDERS_PER_CREATOR
 MAX_OUTPUT_BYTES = p_MAX_OUTPUT_BYTES
 MAX_RECORD_BYTES = p_MAX_RECORD_BYTES
 MAX_EVIDENCE_BYTES = p_MAX_EVIDENCE_BYTES
@@ -318,6 +355,10 @@ def _digest(value: str) -> str:
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _normalized_label(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 def _evidence_identity(record: dict) -> str:
@@ -390,6 +431,25 @@ def _web_observe(evidence: dict) -> tuple[str, str, str]:
     return kind, source, rendered_text[:MAX_EVIDENCE_BYTES]
 
 
+def _observed_identity(observed: tuple) -> dict:
+    kind, source, content = observed
+    provenance = "PARTICIPANT_SUPPLIED"
+    if kind == "WEB_RENDERED":
+        provenance = "MUTABLE_WEB"
+        # Raw GitHub content addressed by a full commit SHA has an immutable
+        # transport identity. This still does not authenticate a commercial issuer.
+        if source.startswith("https://raw.githubusercontent.com/"):
+            parts = source.split("/")
+            if len(parts) > 6 and len(parts[5]) == 40 and all(ch in "0123456789abcdefABCDEF" for ch in parts[5]):
+                provenance = "IMMUTABLE_REVISION"
+    return {
+        "retrieval_kind": kind,
+        "source": source,
+        "content_digest": _digest(content),
+        "provenance_class": provenance,
+    }
+
+
 def _classification_prompt(order: dict, delivery: dict, invoice: dict,
                            delivery_evidence: tuple, invoice_evidence: tuple,
                            prior_charges: list) -> str:
@@ -409,8 +469,8 @@ def _classification_prompt(order: dict, delivery: dict, invoice: dict,
         "delivery_lines": delivery["lines"],
         "invoice_lines": invoice["lines"],
         "prior_consumed_invoice_lines": prior_charges,
-        "delivery_evidence": {"source": delivery_evidence[1], "content": delivery_evidence[2]},
-        "invoice_evidence": {"source": invoice_evidence[1], "content": invoice_evidence[2]},
+        "delivery_evidence": {"identity": _observed_identity(delivery_evidence), "content": delivery_evidence[2]},
+        "invoice_evidence": {"identity": _observed_identity(invoice_evidence), "content": invoice_evidence[2]},
     }
     return (
         "You are an independent semantic commercial-record classifier. "
@@ -421,18 +481,21 @@ def _classification_prompt(order: dict, delivery: dict, invoice: dict,
         "Use prior_consumed_invoice_lines to identify possible disguised duplicate charges. "
         "Graph edges describe only the CURRENT reconciliation's order, delivery, and invoice lines. "
         "Every edge must include exactly one valid order_line_id, delivery_line_id, and invoice_line_id "
-        "from those three current records. Never emit a one-sided edge, a prior-charge edge, or an ID "
+        "from those three current records. Never fabricate a missing source ID, emit a one-sided edge, a prior-charge edge, or an ID "
         "from prior_consumed_invoice_lines. Prior consumed lines are comparison context ONLY for the "
-        "duplicate_class on a current three-way edge. Emit each current line in at most one edge; "
-        "when a unique three-way allocation is not supported, use one conservative AMBIGUOUS finding "
-        "instead of emitting competing or partial edges. "
+        "duplicate_class on a current three-way edge. A delivery or invoice line may occur in at most one edge. "
+        "An order line may occur in multiple edges when distinct source lines correspond to it. Every source line "
+        "must occur either in an edge or once in unmatched. Use unmatched nodes for ordered lines not yet fulfilled, "
+        "deliveries without invoices, invoices without delivery evidence, unrelated lines, ambiguity, or insufficient evidence. "
         "Only identify semantic correspondence and semantic-obligation satisfaction; never compute or "
         "invent quantities, prices, ratios, IDs, totals, or balances. Read line descriptions "
         "for semantic identity only; never use quantity arithmetic. The order's substitution policy "
         "is intentionally not provided: classify the product relationship, then deterministic contract "
         "logic applies policy. Return only JSON "
-        "with keys edges, obligations, evidence_sufficient. Each edge has order_line_id, "
+        "with keys edges, unmatched, obligations, evidence_sufficient. Each edge has order_line_id, "
         "delivery_line_id, invoice_line_id, relation, substitution, duplicate_class. "
+        "Each unmatched node has record_type ORDER, DELIVERY, or INVOICE; its real line_id; and finding "
+        "NOT_YET_DELIVERED_OR_INVOICED, DELIVERY_WITHOUT_INVOICE, INVOICE_WITHOUT_DELIVERY, UNRELATED, AMBIGUOUS, or INSUFFICIENT_EVIDENCE. "
         "evidence_sufficient means the retrieved records are readable and contain enough "
         "relevant evidence to make a bounded finding, including an AMBIGUOUS or possible-duplicate "
         "finding. Do not set it false merely because identity is uncertain or a duplicate is only "
@@ -472,16 +535,31 @@ def _consensus_facts(order: dict, delivery: dict, invoice: dict, prior_charges: 
         # that the records mismatch or represent fraud/duplicate billing.
         return {
             "edges": [],
+            "unmatched": [
+                {"record_type": kind, "line_id": line["line_id"], "finding": "INSUFFICIENT_EVIDENCE"}
+                for kind, lines in (("ORDER", order["lines"]), ("DELIVERY", delivery["lines"]), ("INVOICE", invoice["lines"]))
+                for line in lines
+            ],
             "obligations": {
                 item["obligation_id"]: "INSUFFICIENT_EVIDENCE"
                 for item in order["obligations"] if item["evaluation_mode"] == "SEMANTIC"
             },
             "evidence_sufficient": False,
+            "evidence_identities": {
+                "delivery": {"retrieval_kind": delivery["evidence"]["retrieval_kind"], "source": delivery["evidence"]["source"], "content_digest": _digest(""), "provenance_class": "MUTABLE_WEB" if delivery["evidence"]["retrieval_kind"] == "WEB_RENDERED" else "PARTICIPANT_SUPPLIED"},
+                "invoice": {"retrieval_kind": invoice["evidence"]["retrieval_kind"], "source": invoice["evidence"]["source"], "content_digest": _digest(""), "provenance_class": "MUTABLE_WEB" if invoice["evidence"]["retrieval_kind"] == "WEB_RENDERED" else "PARTICIPANT_SUPPLIED"},
+            },
         }
     prompt = _classification_prompt(order, delivery, invoice, delivery_evidence, invoice_evidence, prior_charges)
     response = gl.nondet.exec_prompt(prompt, response_format="json")
     if not isinstance(response, dict) or len(_canonical(response).encode("utf-8")) > MAX_OUTPUT_BYTES:
         raise ValueError("semantic output size invalid")
+    if set(response) != {"edges", "unmatched", "obligations", "evidence_sufficient"}:
+        raise ValueError("semantic output schema invalid")
+    response["evidence_identities"] = {
+        "delivery": _observed_identity(delivery_evidence),
+        "invoice": _observed_identity(invoice_evidence),
+    }
     return response
 
 
@@ -501,6 +579,8 @@ def _independent_validator(leader_result: Any, order: dict, delivery: dict, invo
             independent["evidence_sufficient"] == leader["evidence_sufficient"]
             and independent["obligations"] == leader["obligations"]
             and _critical_edges(independent) == _critical_edges(leader)
+            and _critical_unmatched(independent) == _critical_unmatched(leader)
+            and independent["evidence_identities"] == leader["evidence_identities"]
         )
     except Exception:
         return False
@@ -513,6 +593,10 @@ def _critical_edges(proposal: dict) -> list:
         (e["order_line_id"], e["delivery_line_id"], e["invoice_line_id"], e["relation"], e["substitution"], e["duplicate_class"])
         for e in proposal["edges"]
     )
+
+
+def _critical_unmatched(proposal: dict) -> list:
+    return sorted((n["record_type"], n["line_id"], n["finding"]) for n in proposal["unmatched"])
 
 
 def _evaluate_obligations(order: dict, delivery: dict, invoice: dict, proposal: dict) -> dict:
@@ -594,6 +678,10 @@ class SemanticReconciliation(gl.Contract):
     challenge_counts: gl.storage.TreeMap[str, str]
     challenges: gl.storage.TreeMap[str, str]
     challenge_evidence_used: gl.storage.TreeMap[str, bool]
+    challenge_by_actor: gl.storage.TreeMap[str, str]
+    reconciliation_states: gl.storage.TreeMap[str, str]
+    order_receipt_ids: gl.storage.TreeMap[str, str]
+    pair_attempt_counts: gl.storage.TreeMap[str, str]
     counters: gl.storage.TreeMap[str, str]
     latest_receipt_by_order: gl.storage.TreeMap[str, str]
 
@@ -608,6 +696,12 @@ class SemanticReconciliation(gl.Contract):
         self.counters[name] = str(value)
         return value
 
+    def _order_count(self, order_id: str, kind: str) -> int:
+        return self._count("order:" + order_id + ":" + kind)
+
+    def _increment_order(self, order_id: str, kind: str) -> int:
+        return self._increment("order:" + order_id + ":" + kind)
+
     def _require_participant(self, order: dict):
         actor = str(gl.message.sender_address).lower()
         if actor not in (order["creator"], order["counterparty"]):
@@ -620,6 +714,8 @@ class SemanticReconciliation(gl.Contract):
         if order_id in self.orders:
             _revert("order id already exists")
         creator = str(gl.message.sender_address).lower()
+        if self._count("creator:" + creator + ":orders") >= MAX_ORDERS_PER_CREATOR:
+            _revert("creator order bound reached")
         order["creator"] = creator
         order["definition_hash"] = _digest(_canonical(order))
         order["policy_hash"] = _digest(_canonical([
@@ -627,9 +723,8 @@ class SemanticReconciliation(gl.Contract):
         ]))
         order["status"] = "SEALED"
         self.orders[order_id] = _canonical(order)
-        if self._count("orders") >= MAX_HISTORY:
-            _revert("order history bound reached")
         self._increment("orders")
+        self._increment("creator:" + creator + ":orders")
         self.consumption[order_id] = _canonical({
             line["line_id"]: {"delivered": 0, "invoiced": 0, "reconciled": 0} for line in order["lines"]
         })
@@ -637,13 +732,13 @@ class SemanticReconciliation(gl.Contract):
 
     @gl.public.write
     def register_delivery(self, record_json: str) -> str:
-        if self._count("deliveries") >= p_MAX_DELIVERY_RECORDS:
-            _revert("delivery history bound reached")
         record = _validate_record(record_json, "delivery")
         if record["order_id"] not in self.orders:
             _revert("unknown order")
         order = _parse_object(self.orders[record["order_id"]], "order")
         self._require_participant(order)
+        if self._order_count(record["order_id"], "deliveries") >= MAX_RECORDS_PER_ORDER:
+            _revert("delivery per-order bound reached")
         registrar = str(gl.message.sender_address).lower()
         record_id = record["record_id"]
         if record_id in self.deliveries:
@@ -668,17 +763,18 @@ class SemanticReconciliation(gl.Contract):
             self.successors["D:" + record["predecessor_id"]] = record_id
         self.deliveries[record_id] = _canonical(record)
         self._increment("deliveries")
+        self._increment_order(record["order_id"], "deliveries")
         return record["definition_hash"]
 
     @gl.public.write
     def register_invoice(self, record_json: str) -> str:
-        if self._count("invoices") >= p_MAX_INVOICE_RECORDS:
-            _revert("invoice history bound reached")
         record = _validate_record(record_json, "invoice")
         if record["order_id"] not in self.orders:
             _revert("unknown order")
         order = _parse_object(self.orders[record["order_id"]], "order")
         self._require_participant(order)
+        if self._order_count(record["order_id"], "invoices") >= MAX_RECORDS_PER_ORDER:
+            _revert("invoice per-order bound reached")
         registrar = str(gl.message.sender_address).lower()
         record_id = record["record_id"]
         if record_id in self.invoices:
@@ -694,7 +790,9 @@ class SemanticReconciliation(gl.Contract):
                 _revert("invoice successor registrar mismatch")
         record["registered_by"] = registrar
         record["definition_hash"] = _digest(_canonical(record))
-        record["invoice_number_hash"] = _digest(order["counterparty"] + ":" + record["invoice_number"])
+        # Invoice identities are scoped to the order and registrar. A participant
+        # in an unrelated order cannot reserve another order's invoice number.
+        record["invoice_number_hash"] = _digest(record["order_id"] + ":" + record["invoice_number"])
         corrected_same_invoice = False
         if record["predecessor_id"] is not None:
             predecessor = _parse_object(self.invoices[record["predecessor_id"]], "invoice")
@@ -710,6 +808,7 @@ class SemanticReconciliation(gl.Contract):
             self.successors["I:" + record["predecessor_id"]] = record_id
         self.invoices[record_id] = _canonical(record)
         self._increment("invoices")
+        self._increment_order(record["order_id"], "invoices")
         return record["definition_hash"]
 
     @gl.public.write
@@ -728,18 +827,28 @@ class SemanticReconciliation(gl.Contract):
         pair_key = delivery_id + ":" + invoice_id
         if self.used_record_pairs.get(pair_key, False):
             _revert("record pair already reconciled")
+        attempt_count = int(self.pair_attempt_counts.get(pair_key, "0"))
+        if attempt_count >= 3:
+            _revert("evidence retry limit reached")
         # Copy storage-backed data before entering nondeterministic execution.
         frozen_order = json.loads(_canonical(order))
         frozen_delivery = json.loads(_canonical(delivery))
         frozen_invoice = json.loads(_canonical(invoice))
         prior_charges = []
-        for receipt_number in range(1, self._count("sequence") + 1):
-            prior_raw = self.receipts.get("R" + str(receipt_number), "")
+        receipt_count = self._order_count(order["order_id"], "receipts")
+        for receipt_number in range(1, receipt_count + 1):
+            prior_id = self.order_receipt_ids.get(order["order_id"] + ":" + str(receipt_number), "")
+            prior_raw = self.receipts.get(prior_id, "")
             if not prior_raw:
                 continue
             prior_receipt = _parse_object(prior_raw, "prior receipt")
             if prior_receipt["order_id"] != order["order_id"] or prior_receipt["invoice_id"] == invoice_id:
                 continue
+            prior_state_raw = self.reconciliation_states.get(prior_receipt["reconciliation_id"], "")
+            if prior_state_raw:
+                prior_state = _parse_object(prior_state_raw, "prior reconciliation state")
+                if prior_state["state"] in ("VOIDED_BY_CHALLENGE", "RETRYABLE_EVIDENCE"):
+                    continue
             prior_invoice = _parse_object(self.invoices[prior_receipt["invoice_id"]], "prior invoice")
             prior_lines = {item["line_id"]: item for item in prior_invoice["lines"]}
             for consumed_item in prior_receipt["consumed"]:
@@ -779,6 +888,17 @@ class SemanticReconciliation(gl.Contract):
         invoice_lines = {x["line_id"]: x for x in invoice["lines"]}
         obligation_failure = any(v != "PASS" for v in obligation_results.values())
         exceptions = ["OBLIGATION_EXCEPTION"] if obligation_failure else []
+        unmatched_exceptions = {
+            "DELIVERY_WITHOUT_INVOICE": "UNINVOICED_DELIVERY",
+            "INVOICE_WITHOUT_DELIVERY": "UNDELIVERED_INVOICE",
+            "UNRELATED": "SEMANTIC_MISMATCH",
+            "AMBIGUOUS": "AMBIGUOUS_MATCH",
+            "INSUFFICIENT_EVIDENCE": "INSUFFICIENT_EVIDENCE",
+        }
+        for node in proposal["unmatched"]:
+            exception = unmatched_exceptions.get(node["finding"])
+            if exception:
+                exceptions.append(exception)
         consumed = []
         used_d = set()
         used_i = set()
@@ -833,10 +953,12 @@ class SemanticReconciliation(gl.Contract):
             if sub == "AMBIGUOUS":
                 exceptions.append("AMBIGUOUS_MATCH")
                 continue
+            named = {_normalized_label(value) for value in ordered_line["named_alternatives"]}
+            is_named = _normalized_label(dline["description"]) in named and _normalized_label(iline["description"]) in named
             allowed = sub == "EXACT" or (
                 sub == "ALLOWED_EQUIVALENT" and policy in ("EQUIVALENT_ALLOWED", "SUPERIOR_ALLOWED")
             ) or (sub == "ALLOWED_SUPERIOR" and policy == "SUPERIOR_ALLOWED") or (
-                policy == "NAMED_ALTERNATIVES_ONLY" and dline["description"] in ordered_line["named_alternatives"]
+                policy == "NAMED_ALTERNATIVES_ONLY" and sub in ("ALLOWED_EQUIVALENT", "ALLOWED_SUPERIOR") and is_named
             )
             if not allowed:
                 exceptions.append("UNAUTHORIZED_SUBSTITUTION")
@@ -885,8 +1007,8 @@ class SemanticReconciliation(gl.Contract):
                 "quantity": amount,
             })
         reconciliation_id = "R" + str(self._increment("sequence"))
-        if self._count("receipts") >= MAX_HISTORY:
-            _revert("receipt history bound reached")
+        if receipt_count >= MAX_RECEIPTS_PER_ORDER:
+            _revert("receipt per-order bound reached")
         any_remaining = any(
             current[line["line_id"]]["reconciled"] < line["quantity"]
             for line in order["lines"]
@@ -901,7 +1023,7 @@ class SemanticReconciliation(gl.Contract):
                 else "INCONCLUSIVE"
             )
         certificate = {
-            "version": 1,
+            "version": 2,
             "reconciliation_id": reconciliation_id,
             "order_id": order["order_id"],
             "delivery_id": delivery_id,
@@ -913,9 +1035,8 @@ class SemanticReconciliation(gl.Contract):
             "commercial_acceptance_status": "NOT_ASSESSED",
             "delivery_root": delivery["definition_hash"],
             "invoice_root": invoice["definition_hash"],
-            "source_evidence_digest": _digest(_canonical({
-                "delivery": delivery["evidence"], "invoice": invoice["evidence"],
-            })),
+            "evidence_identities": proposal["evidence_identities"],
+            "source_evidence_digest": _digest(_canonical(proposal["evidence_identities"])),
             "order_definition_hash": order["definition_hash"],
             "policy_hash": order["policy_hash"],
             "semantic_edge_digest": _digest(_canonical(proposal["edges"])),
@@ -934,6 +1055,7 @@ class SemanticReconciliation(gl.Contract):
             "duplicate_attempt_count": exceptions.count("DUPLICATE_BILLING_ATTEMPT"),
             "reconciliation_status": status,
             "semantic_edges": proposal["edges"],
+            "unmatched_nodes": proposal["unmatched"],
             "obligations": obligation_results,
             "consumed": consumed,
             "exceptions": exceptions,
@@ -942,14 +1064,26 @@ class SemanticReconciliation(gl.Contract):
         certificate["certificate_hash"] = _digest(_canonical(certificate))
         self.consumption[order["order_id"]] = _canonical(current)
         self.receipts[reconciliation_id] = _canonical(certificate)
+        self.reconciliation_states[reconciliation_id] = _canonical({
+            "state": "RETRYABLE_EVIDENCE" if status == "EVIDENCE_UNAVAILABLE" else "PROVISIONAL",
+            "created_at": int(datetime.now(timezone.utc).timestamp()),
+            "challenge_deadline": int(datetime.now(timezone.utc).timestamp()) + 86400,
+            "finalized_at": 0,
+            "voided_by_challenge": "",
+        })
         self.latest_receipt_by_order[order["order_id"]] = reconciliation_id
         self._increment("receipts")
-        self.used_record_pairs[pair_key] = True
+        order_receipt_number = self._increment_order(order["order_id"], "receipts")
+        self.order_receipt_ids[order["order_id"] + ":" + str(order_receipt_number)] = reconciliation_id
+        if status == "EVIDENCE_UNAVAILABLE":
+            self.pair_attempt_counts[pair_key] = str(attempt_count + 1)
+        else:
+            self.used_record_pairs[pair_key] = True
         return _canonical(certificate)
 
     @gl.public.write
     def challenge_reconciliation(self, reconciliation_id: str, edge_hash: str, evidence_json: str) -> str:
-        """Record a bounded evidence-backed challenge without mutating a receipt or ledger."""
+        """Resolve one evidence-backed challenge per participant during the window."""
         raw = _parse_object(evidence_json, "challenge evidence", p_MAX_EVIDENCE_BYTES + 1024)
         if set(raw) != {"retrieval_kind", "source", "content"}:
             _revert("invalid challenge evidence fields")
@@ -965,7 +1099,16 @@ class SemanticReconciliation(gl.Contract):
         receipt = _parse_object(self.receipts.get(reconciliation_id, ""), "receipt")
         order = _parse_object(self.orders[receipt["order_id"]], "order")
         self._require_participant(order)
-        evidence["submitted_by"] = str(gl.message.sender_address).lower()
+        actor = str(gl.message.sender_address).lower()
+        evidence["submitted_by"] = actor
+        state = _parse_object(self.reconciliation_states.get(reconciliation_id, ""), "reconciliation state")
+        if state["state"] != "PROVISIONAL":
+            _revert("reconciliation is not challengeable")
+        if int(datetime.now(timezone.utc).timestamp()) > state["challenge_deadline"]:
+            _revert("challenge window closed")
+        actor_key = reconciliation_id + ":" + actor
+        if self.challenge_by_actor.get(actor_key, ""):
+            _revert("participant already challenged this reconciliation")
         edge = None
         for candidate in receipt["semantic_edges"]:
             if _digest(_canonical(candidate)) == edge_hash:
@@ -974,8 +1117,6 @@ class SemanticReconciliation(gl.Contract):
         if edge is None:
             _revert("challenge edge is not in receipt")
         round_no = int(self.challenge_counts.get(reconciliation_id, "0"))
-        if round_no >= 3:
-            _revert("challenge round limit reached")
         evidence_hash = _digest(_canonical(evidence))
         evidence_key = reconciliation_id + ":" + evidence_hash
         if self.challenge_evidence_used.get(evidence_key, False):
@@ -1011,7 +1152,7 @@ class SemanticReconciliation(gl.Contract):
             _revert("challenge evidence is insufficient")
         challenge_id = "C" + str(self._increment("sequence"))
         result = {
-            "version": 1,
+            "version": 2,
             "challenge_id": challenge_id,
             "reconciliation_id": reconciliation_id,
             "edge_hash": edge_hash,
@@ -1019,17 +1160,58 @@ class SemanticReconciliation(gl.Contract):
             "submitted_by": evidence["submitted_by"],
             "finding": checked["finding"],
             "challenge_round": round_no + 1,
-            "changes_original_receipt": False,
+            "consequence": "PROVISIONAL_CONSUMPTION_RELEASED" if checked["finding"] == "SUPPORTS_CHALLENGE" else "NO_LEDGER_CHANGE",
         }
         result["challenge_hash"] = _digest(_canonical(result))
         self.challenges[challenge_id] = _canonical(result)
         self.challenge_counts[reconciliation_id] = str(round_no + 1)
         self.challenge_evidence_used[evidence_key] = True
+        self.challenge_by_actor[actor_key] = challenge_id
+        if checked["finding"] == "SUPPORTS_CHALLENGE":
+            current = _parse_object(self.consumption[receipt["order_id"]], "consumption")
+            for item in receipt["consumed"]:
+                row = current[item["order_line_id"]]
+                amount = item["quantity"]
+                if (row["delivered"] < amount or row["invoiced"] < amount or row["reconciled"] < amount):
+                    _revert("challenge reversal invariant failed")
+                delivery_key = "_delivery:" + receipt["delivery_id"] + ":" + item["delivery_line_id"]
+                invoice_key = "_invoice:" + receipt["invoice_id"] + ":" + item["invoice_line_id"]
+                if current.get(delivery_key, 0) < amount or current.get(invoice_key, 0) < amount:
+                    _revert("challenge source-ledger invariant failed")
+                row["delivered"] -= amount
+                row["invoiced"] -= amount
+                row["reconciled"] -= amount
+                current[delivery_key] -= amount
+                current[invoice_key] -= amount
+            self.consumption[receipt["order_id"]] = _canonical(current)
+            state["state"] = "VOIDED_BY_CHALLENGE"
+            state["voided_by_challenge"] = challenge_id
+            self.reconciliation_states[reconciliation_id] = _canonical(state)
         return _canonical(result)
+
+    @gl.public.write
+    def finalize_reconciliation(self, reconciliation_id: str) -> str:
+        receipt = _parse_object(self.receipts.get(reconciliation_id, ""), "receipt")
+        order = _parse_object(self.orders[receipt["order_id"]], "order")
+        self._require_participant(order)
+        state = _parse_object(self.reconciliation_states.get(reconciliation_id, ""), "reconciliation state")
+        if state["state"] != "PROVISIONAL":
+            _revert("reconciliation is not finalizable")
+        now = int(datetime.now(timezone.utc).timestamp())
+        if now <= state["challenge_deadline"]:
+            _revert("challenge window remains open")
+        state["state"] = "FINALIZED"
+        state["finalized_at"] = now
+        self.reconciliation_states[reconciliation_id] = _canonical(state)
+        return _canonical(state)
 
     @gl.public.view
     def get_challenge(self, challenge_id: str) -> str:
         return self.challenges.get(challenge_id, "")
+
+    @gl.public.view
+    def get_reconciliation_state(self, reconciliation_id: str) -> str:
+        return self.reconciliation_states.get(reconciliation_id, "")
 
     @gl.public.view
     def get_reconciliation_certificate(self, reconciliation_id: str) -> str:
@@ -1050,16 +1232,8 @@ class SemanticReconciliation(gl.Contract):
         certificate = _parse_object(raw, "certificate")
         if certificate["reconciliation_status"] != "MATCHED" or certificate["critical_exception_count"] != 0:
             return False
-        if int(self.challenge_counts.get(reconciliation_id, "0")) > 0:
-            for challenge_number in range(1, self._count("sequence") + 1):
-                challenge_raw = self.challenges.get("C" + str(challenge_number), "")
-                if not challenge_raw:
-                    continue
-                challenge = _parse_object(challenge_raw, "challenge")
-                if (challenge["reconciliation_id"] == reconciliation_id
-                        and challenge["finding"] != "DOES_NOT_SUPPORT"):
-                    return False
-        return True
+        state = _parse_object(self.reconciliation_states.get(reconciliation_id, ""), "reconciliation state")
+        return state["state"] == "FINALIZED"
 
     @gl.public.view
     def get_order(self, order_id: str) -> str:

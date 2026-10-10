@@ -19,7 +19,8 @@ def test_semantic_synonym_and_certificate(system):
     assert cert["reconciliation_status"] == "MATCHED"
     assert json.loads(c.get_latest_reconciliation_for_order("PO-1"))["reconciliation_id"] == cert["reconciliation_id"]
     assert cert["consumed"][0]["quantity"] == 10
-    assert c.is_reconciliation_clear(cert["reconciliation_id"])
+    assert not c.is_reconciliation_clear(cert["reconciliation_id"])
+    assert json.loads(c.get_reconciliation_state(cert["reconciliation_id"]))["state"] == "PROVISIONAL"
     assert cert["matched_delivery_quantity_digest"]
     assert cert["matched_invoice_quantity_digest"]
     assert cert["semantic_edge_digest"]
@@ -377,7 +378,7 @@ def test_invalid_external_evidence_route_records_safe_unavailable_result(system)
     assert c.get_reconciliation_certificate("R1") == json.dumps(cert, sort_keys=True, separators=(",", ":"))
 
 
-def test_evidence_backed_challenge_is_bounded_and_does_not_rewrite_receipt(system):
+def test_sustained_challenge_voids_provisional_receipt_and_releases_consumption(system):
     c, vm = system
     setup_records(c)
     mock_matching(vm, proposal())
@@ -393,9 +394,11 @@ def test_evidence_backed_challenge_is_bounded_and_does_not_rewrite_receipt(syste
         json.dumps({"retrieval_kind": "STRUCTURED_FIXTURE", "source": "fixture:proof", "content": "Product is not the ordered grade"}),
     ))
     assert challenge["finding"] == "SUPPORTS_CHALLENGE"
-    assert challenge["changes_original_receipt"] is False
+    assert challenge["consequence"] == "PROVISIONAL_CONSUMPTION_RELEASED"
     assert challenge["submitted_by"] == challenger
     assert c.is_reconciliation_clear(receipt["reconciliation_id"]) is False
+    assert json.loads(c.get_reconciliation_state(receipt["reconciliation_id"]))["state"] == "VOIDED_BY_CHALLENGE"
+    assert json.loads(c.get_remaining_quantities("PO-1"))["O1"]["reconciled"] == 0
     vm.mock_llm(r"Evaluate evidence for a bounded challenge", json.dumps(finding))
     assert vm.run_validator() is True
     assert c.get_reconciliation_certificate(receipt["reconciliation_id"]) == json.dumps(receipt, sort_keys=True, separators=(",", ":"))

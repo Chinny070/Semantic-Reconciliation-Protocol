@@ -219,6 +219,7 @@ def _record_scenario(contract, name, transactions, result, evidence_sources=None
         "commercial_obligation_price_failure": {"status": "INCONCLUSIVE", "consumed_quantity": 0, "exception": "OBLIGATION_EXCEPTION"},
         "invoice_correction_successor": {"status": "MATCHED", "consumed_quantity": 10},
         "negative_external_failure_fail_closed": {"status": "EVIDENCE_UNAVAILABLE", "consumed_quantity": 0},
+        "multiline_partial_with_unmatched_order": {"status": "PARTIAL_MATCH", "consumed_quantity": 4},
     }[name]
     observed = {
         "status": result.get("reconciliation_status"),
@@ -573,5 +574,90 @@ def test_live_external_route_failure_is_fail_closed(live_contract):
     assert cert["reconciliation_status"] == "EVIDENCE_UNAVAILABLE", cert
     assert cert["consumed"] == [] and "EVIDENCE_UNAVAILABLE" in cert["exceptions"], cert
     assert "DUPLICATE_BILLING_ATTEMPT" not in cert["exceptions"], cert
+    first_id = cert["reconciliation_id"]
+    retried = _submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account)
+    txs.append(retried)
+    retry_cert = _receipt_for_order(contract, order_id)
+    assert retry_cert["reconciliation_id"] != first_id
+    assert retry_cert["reconciliation_status"] == "EVIDENCE_UNAVAILABLE"
+    assert json.loads(contract.get_remaining_quantities(args=[order_id]).call()) == before
     _record_scenario(contract, "negative_external_failure_fail_closed", txs, cert,
                      [unavailable_url], quantity_before=before)
+
+
+def test_live_multiline_partial_fulfillment_preserves_unmatched_order_line(live_contract):
+    contract, account = live_contract
+    order_id = _id("LIVE-MULTILINE")
+    order = _order(order_id, account.address, quantity=10, description="Portland cement grade 42.5")
+    order["lines"].append({
+        **order["lines"][0],
+        "line_id": "O2",
+        "description": "Powder-free nitrile examination gloves",
+    })
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=4,
+                       description="OPC cement grade 42.5")
+    invoice = _record("invoice", _id("INV"), order_id, quantity=4,
+                      description="Ordinary Portland cement 42.5", price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["reconciliation_status"] == "PARTIAL_MATCH", cert
+    assert cert["consumed"][0]["quantity"] == 4, cert
+    assert {node["line_id"] for node in cert["unmatched_nodes"] if node["record_type"] == "ORDER"} == {"O2"}
+    _record_scenario(contract, "multiline_partial_with_unmatched_order", txs, cert)
+
+
+def test_live_sustained_challenge_releases_provisional_consumption(live_contract):
+    import hashlib
+
+    contract, account = live_contract
+    order_id = _id("LIVE-CHALLENGE")
+    order = _order(order_id, account.address, quantity=5, policy="EXACT_REQUIRED",
+                   description="Sterile saline bottle 500 mL")
+    delivery = _record("delivery", _id("DEL"), order_id, quantity=5,
+                       description="Sterile saline bottle 500 mL")
+    invoice = _record("invoice", _id("INV"), order_id, quantity=5,
+                      description="Sterile saline bottle 500 mL", price=90)
+    txs = _publish(contract, account, order, delivery, invoice)
+    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    cert = _receipt_for_order(contract, order_id)
+    assert cert["consumed"][0]["quantity"] == 5, cert
+    edge_hash = hashlib.sha256(json.dumps(
+        cert["semantic_edges"][0], sort_keys=True, separators=(",", ":")
+    ).encode()).hexdigest()
+    challenge_evidence = {
+        "retrieval_kind": "STRUCTURED_FIXTURE",
+        "source": "fixture:post-reconciliation-inspection:" + order_id,
+        "content": (
+            "Post-reconciliation inspection evidence for the exact referenced delivery and invoice lines: "
+            "both source lines were mislabeled and actually identify 250 mL non-sterile water bottles, "
+            "not the ordered sterile saline 500 mL product. This directly contradicts the semantic edge."
+        ),
+    }
+    txs.append(_submit(contract, "challenge_reconciliation", [
+        cert["reconciliation_id"], edge_hash, json.dumps(challenge_evidence, separators=(",", ":")),
+    ], account))
+    state = json.loads(contract.get_reconciliation_state(args=[cert["reconciliation_id"]]).call())
+    after = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
+    assert state["state"] == "VOIDED_BY_CHALLENGE", state
+    assert after["O1"]["reconciled"] == 0, after
+    challenge = json.loads(contract.get_challenge(args=[state["voided_by_challenge"]]).call())
+    assert challenge["finding"] == "SUPPORTS_CHALLENGE", challenge
+    evidence = json.loads(EVIDENCE_FILE.read_text(encoding="utf-8")) if EVIDENCE_FILE.exists() else {}
+    evidence["sustained_challenge_release"] = {
+        "verified": True,
+        "expectation_met": True,
+        "contract_address": canonical_address(),
+        "order_id": order_id,
+        "transactions": [tx["tx_id"] for tx in txs],
+        "final_statuses": [tx["status_name"] for tx in txs],
+        "results": [tx.get("result_name") for tx in txs],
+        "stored_result": cert,
+        "challenge": challenge,
+        "reconciliation_state": state,
+        "quantity_after": after,
+        "consumed_quantity": 0,
+        "evidence_sources": [challenge_evidence["source"]],
+    }
+    EVIDENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    EVIDENCE_FILE.write_text(json.dumps(evidence, sort_keys=True, indent=2), encoding="utf-8")

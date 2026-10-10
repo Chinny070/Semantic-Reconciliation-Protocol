@@ -54,30 +54,37 @@ def test_corrected_invoice_can_preserve_invoice_number_and_immutable_lineage(sys
     assert json.loads(c.get_invoice_record("I-2"))["predecessor_id"] == "I-1"
 
 
-def test_more_than_sixty_four_invoice_records_are_rejected(system):
+def test_invoice_capacity_is_bounded_per_order_without_cross_order_exhaustion(system):
     c, vm = system
     c.create_order(json.dumps(order()))
     for index in range(64):
         c.register_invoice(json.dumps(record("invoice", "I-" + str(index), description="invoice " + str(index))))
-    with vm.expect_revert("invoice history bound reached"):
+    with vm.expect_revert("invoice per-order bound reached"):
         c.register_invoice(json.dumps(record("invoice", "I-overflow", description="overflow")))
+    c.create_order(json.dumps(order("PO-2")))
+    c.register_invoice(json.dumps(record("invoice", "I-other-order", order_id="PO-2", description="usable")))
 
 
-def test_more_than_sixty_four_orders_are_rejected(system):
+def test_order_capacity_is_bounded_per_creator_without_cross_creator_exhaustion(system):
     c, vm = system
     for index in range(64):
         c.create_order(json.dumps(order("PO-" + str(index))))
-    with vm.expect_revert("order history bound reached"):
+    with vm.expect_revert("creator order bound reached"):
         c.create_order(json.dumps(order("PO-overflow")))
+    vm.sender = "0x0000000000000000000000000000000000000007"
+    c.create_order(json.dumps(order("PO-other-creator")))
+    assert json.loads(c.get_order("PO-other-creator"))["order_id"] == "PO-other-creator"
 
 
-def test_more_than_sixty_four_delivery_records_are_rejected(system):
+def test_delivery_capacity_is_bounded_per_order_without_cross_order_exhaustion(system):
     c, vm = system
     c.create_order(json.dumps(order()))
     for index in range(64):
         c.register_delivery(json.dumps(record("delivery", "D-" + str(index), description="delivery " + str(index))))
-    with vm.expect_revert("delivery history bound reached"):
+    with vm.expect_revert("delivery per-order bound reached"):
         c.register_delivery(json.dumps(record("delivery", "D-overflow", description="overflow")))
+    c.create_order(json.dumps(order("PO-2")))
+    c.register_delivery(json.dumps(record("delivery", "D-other-order", order_id="PO-2", description="usable")))
 
 
 def test_unrelated_caller_cannot_register_records(system):
@@ -204,7 +211,7 @@ def test_certificate_reports_semantic_result_without_claiming_bilateral_acceptan
         "edges": [{"order_line_id": "O1", "delivery_line_id": "D1", "invoice_line_id": "I1",
                    "relation": "ALLOWED_EQUIVALENT", "substitution": "ALLOWED_EQUIVALENT",
                    "duplicate_class": "DISTINCT_CHARGE"}],
-        "obligations": {}, "evidence_sufficient": True,
+        "unmatched": [], "obligations": {}, "evidence_sufficient": True,
     }))
     certificate = json.loads(c.reconcile("D-1", "I-1"))
     assert certificate["reconciliation_status"] == "MATCHED"
