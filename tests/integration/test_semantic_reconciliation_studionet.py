@@ -10,6 +10,7 @@ import requests
 from gltest import get_contract_factory
 from gltest.clients import get_gl_client
 from gltest.assertions import tx_execution_failed, tx_execution_succeeded
+from genlayer_py.exceptions import GenLayerError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -131,6 +132,16 @@ def _write_and_wait(contract, method_name, arguments, account):
             receipt = client.get_transaction(tx_hash)
         except requests.exceptions.RequestException:
             if attempt == 99:
+                raise
+            time.sleep(5)
+            continue
+        except GenLayerError as exc:
+            message = str(exc).lower()
+            transient = any(marker in message for marker in (
+                "502", "503", "504", "request to ", "timed out",
+                "connection reset", "remote end closed", "temporarily unavailable",
+            ))
+            if not transient or attempt == 99:
                 raise
             time.sleep(5)
             continue
