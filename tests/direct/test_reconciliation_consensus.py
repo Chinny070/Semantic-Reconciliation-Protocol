@@ -38,6 +38,17 @@ def test_validator_rejects_forged_leader_result():
         pass
 
 
+def test_classifier_prompt_limits_edges_to_current_three_way_lines():
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[2] / "contracts" / "semantic_reconciliation.py"
+    code = source.read_text(encoding="utf-8")
+    assert "Every edge must include exactly one valid order_line_id" in code
+    assert "delivery_line_id, and invoice_line_id " in code
+    assert "Prior consumed lines are comparison context ONLY" in code
+    assert "Never emit a one-sided edge" in code
+
+
 def test_independent_validator_rejects_well_formed_decision_critical_forgery(system):
     c, vm = system
     c.create_order(json.dumps(order()))

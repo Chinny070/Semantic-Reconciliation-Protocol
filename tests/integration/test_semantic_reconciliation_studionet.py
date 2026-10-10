@@ -99,7 +99,7 @@ def _record(kind, record_id, order_id, quantity=10, unit="each", description="Po
 def _submit(contract, method_name, arguments, account, should_succeed=True):
     receipt = getattr(contract, method_name)(args=arguments).transact(
         wait_transaction_status=TransactionStatus.FINALIZED,
-        wait_interval=20000,
+        wait_interval=60000,
         wait_retries=100,
     )
     assert receipt.get("status_name") == "FINALIZED", (method_name, receipt.get("status_name"), receipt.get("tx_id"))
@@ -149,9 +149,43 @@ def _record_scenario(contract, name, transactions, result, evidence_sources=None
             quantity = item["quantity"]
             for key in ("delivered", "invoiced", "reconciled"):
                 row[key] = max(0, row.get(key, 0) - quantity)
+            delivery_key = "_delivery:" + result["delivery_id"] + ":" + item["delivery_line_id"]
+            invoice_key = "_invoice:" + result["invoice_id"] + ":" + item["invoice_line_id"]
+            quantity_before[delivery_key] = max(0, quantity_before.get(delivery_key, 0) - quantity)
+            quantity_before[invoice_key] = max(0, quantity_before.get(invoice_key, 0) - quantity)
+    expected = {
+        "semantic_match_rendered_evidence": {"status": "MATCHED", "consumed_quantity": 10},
+        "exact_item_accepted": {"status": "MATCHED", "consumed_quantity": 10, "relation": "EXACT_MATCH"},
+        "packaging_equivalence": {"status": "MATCHED", "consumed_quantity": 24, "relation": "PACKAGING_EQUIVALENT"},
+        "partial_fulfillment": {"status": "PARTIAL_MATCH", "consumed_quantity": 4},
+        "allowed_equivalent_substitution": {"status": "MATCHED", "consumed_quantity": 10, "substitution": "ALLOWED_EQUIVALENT"},
+        "unauthorized_substitution": {"status": "INCONCLUSIVE", "consumed_quantity": 0, "exception": "UNAUTHORIZED_SUBSTITUTION"},
+        "inferior_substitution_rejected": {"status": "INCONCLUSIVE", "consumed_quantity": 0, "exception": "INFERIOR_SUBSTITUTION"},
+        "ambiguous_substitution_no_consumption": {"status": "INCONCLUSIVE", "consumed_quantity": 0, "relation": "AMBIGUOUS"},
+        "disguised_duplicate_blocked": {"status": "INCONCLUSIVE", "consumed_quantity": 0, "exception": "DUPLICATE_BILLING_ATTEMPT"},
+        "quantity_shortfall": {"status": "PARTIAL_MATCH", "consumed_quantity": 4, "exception": "QUANTITY_SHORTFALL"},
+        "commercial_obligation_price_failure": {"status": "INCONCLUSIVE", "consumed_quantity": 0, "exception": "OBLIGATION_EXCEPTION"},
+        "invoice_correction_successor": {"status": "MATCHED", "consumed_quantity": 10},
+        "negative_external_failure_fail_closed": {"status": "EVIDENCE_UNAVAILABLE", "consumed_quantity": 0},
+    }[name]
+    observed = {
+        "status": result.get("reconciliation_status"),
+        "consumed_quantity": sum(item["quantity"] for item in result.get("consumed", [])),
+        "exceptions": result.get("exceptions", []),
+        "semantic_edges": result.get("semantic_edges", []),
+    }
     evidence[name] = {
         "verified": True,
         "contract_address": canonical_address(),
+        "expected": expected,
+        "observed_interpretation": observed,
+        "expectation_met": (
+            observed["status"] == expected["status"]
+            and observed["consumed_quantity"] == expected["consumed_quantity"]
+            and (not expected.get("exception") or expected["exception"] in observed["exceptions"])
+            and (not expected.get("relation") or any(e.get("relation") == expected["relation"] for e in observed["semantic_edges"]))
+            and (not expected.get("substitution") or any(e.get("substitution") == expected["substitution"] for e in observed["semantic_edges"]))
+        ),
         "order_id": order_id,
         "transactions": [tx["tx_id"] for tx in transactions],
         "final_statuses": [tx["status_name"] for tx in transactions],
