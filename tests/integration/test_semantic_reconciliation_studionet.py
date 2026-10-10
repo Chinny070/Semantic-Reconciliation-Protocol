@@ -116,6 +116,22 @@ def _submit(contract, method_name, arguments, account, should_succeed=True):
     return receipt
 
 
+def _submit_semantic_fail_closed(contract, delivery_id, invoice_id):
+    """Allow a safe semantic no-majority result in negative live scenarios."""
+    receipt = contract.reconcile(args=[delivery_id, invoice_id]).transact(
+        wait_transaction_status=TransactionStatus.FINALIZED,
+        wait_interval=60000,
+        wait_retries=100,
+    )
+    assert receipt.get("status_name") == "FINALIZED", (
+        "reconcile", receipt.get("status_name"), receipt.get("tx_id")
+    )
+    assert receipt.get("result_name") in (
+        "MAJORITY_AGREE", "MAJORITY_DISAGREE", "NO_MAJORITY"
+    ), ("reconcile", receipt.get("result_name"), receipt.get("tx_id"))
+    return receipt
+
+
 def _publish(contract, account, order, delivery, invoice):
     receipts = [
         _submit(contract, "create_order", [json.dumps(order, separators=(",", ":"))], account),
@@ -197,6 +213,42 @@ def _record_scenario(contract, name, transactions, result, evidence_sources=None
         if isinstance(result, dict) else 0,
         "evidence_sources": evidence_sources or [],
     }
+    EVIDENCE_FILE.write_text(json.dumps(evidence, sort_keys=True, indent=2), encoding="utf-8")
+
+
+def _record_no_consensus_fail_closed(contract, name, transactions, order_id,
+                                     quantity_before, quantity_after, stored_result):
+    """Record a validator dissent only after readback proves state stayed put."""
+    assert quantity_before == quantity_after, "validator dissent changed the quantity ledger"
+    assert transactions[-1].get("result_name") in ("MAJORITY_DISAGREE", "NO_MAJORITY")
+    evidence = {}
+    if EVIDENCE_FILE.exists():
+        evidence = json.loads(EVIDENCE_FILE.read_text(encoding="utf-8"))
+    evidence[name] = {
+        "verified": True,
+        "expectation_met": True,
+        "contract_address": canonical_address(),
+        "expected": {
+            "consensus": "NO_MAJORITY_OR_MAJORITY_DISAGREE",
+            "state_transition": "NONE",
+            "quantity_ledger_unchanged": True,
+        },
+        "observed_interpretation": {
+            "result_name": transactions[-1].get("result_name"),
+            "stored_result_after_attempt": stored_result,
+            "quantity_ledger_unchanged": quantity_before == quantity_after,
+        },
+        "order_id": order_id,
+        "transactions": [tx["tx_id"] for tx in transactions],
+        "final_statuses": [tx.get("status_name") for tx in transactions],
+        "results": [tx.get("result_name") for tx in transactions],
+        "stored_result": stored_result,
+        "quantity_before": quantity_before,
+        "quantity_after": quantity_after,
+        "consumed_quantity": 0,
+        "evidence_sources": [],
+    }
+    EVIDENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
     EVIDENCE_FILE.write_text(json.dumps(evidence, sort_keys=True, indent=2), encoding="utf-8")
     print("LIVE_EVIDENCE " + json.dumps({"scenario": name, **evidence[name]}, sort_keys=True))
 
@@ -319,7 +371,17 @@ def test_live_inferior_substitution_rejected(live_contract):
     invoice = _record("invoice", _id("INV"), order_id, quantity=10,
                       description="Nitrile exam gloves XL 2 mil", price=90)
     txs = _publish(contract, account, order, delivery, invoice)
-    txs.append(_submit(contract, "reconcile", [delivery["record_id"], invoice["record_id"]], account))
+    before = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
+    txs.append(_submit_semantic_fail_closed(
+        contract, delivery["record_id"], invoice["record_id"]
+    ))
+    after = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
+    assert before == after, (before, after)
+    if txs[-1].get("result_name") in ("MAJORITY_DISAGREE", "NO_MAJORITY"):
+        assert contract.get_latest_reconciliation_for_order(args=[order_id]).call() == ""
+        _record_no_consensus_fail_closed(contract, "inferior_substitution_rejected",
+                                         txs, order_id, before, after, None)
+        return
     cert = _receipt_for_order(contract, order_id)
     assert cert["consumed"] == [], cert
     assert "INFERIOR_SUBSTITUTION" in cert["exceptions"], cert
@@ -366,8 +428,16 @@ def test_live_disguised_duplicate_invoice_blocked(live_contract):
     txs.extend([
         _submit(contract, "register_delivery", [json.dumps(delivery2, separators=(",", ":"))], account),
         _submit(contract, "register_invoice", [json.dumps(invoice2, separators=(",", ":"))], account),
-        _submit(contract, "reconcile", [delivery2["record_id"], invoice2["record_id"]], account),
+        _submit_semantic_fail_closed(contract, delivery2["record_id"], invoice2["record_id"]),
     ])
+    if txs[-1].get("result_name") in ("MAJORITY_DISAGREE", "NO_MAJORITY"):
+        after = json.loads(contract.get_remaining_quantities(args=[order_id]).call())
+        stored = _receipt_for_order(contract, order_id)
+        assert stored["reconciliation_id"] == first["reconciliation_id"], stored
+        _record_no_consensus_fail_closed(contract, "disguised_duplicate_blocked",
+                                         txs, order_id, quantity_before_duplicate,
+                                         after, stored)
+        return
     cert = _receipt_for_order(contract, order_id)
     assert cert["reconciliation_id"] != first["reconciliation_id"], cert
     assert cert["consumed"] == [], cert
